@@ -27,12 +27,12 @@ import {
 import { useApi } from '../hooks/useApi';
 import {
   getParcelles,
-  getZones,
+  getParcelleDetails,
   helloWorld,
   type ParcelleFeature,
-  type ZoneFeature,
-  type ZoneProperties,
-  type ZoneStyle,
+  type ZoneDetail,
+  type ZoneDetailProperties,
+  type ParcelleStats,
 } from '../services/agridroneService';
 import MapView, { Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,25 +72,19 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity})`;
 }
 
-function getZoneStyle(feature: ZoneFeature): {
+function getZoneDetailStyle(zone: ZoneDetail): {
   fillColor: string;
   strokeColor: string;
   strokeWidth: number;
 } {
-  const style = feature.properties?.style as ZoneStyle | undefined;
+  const style = zone.style;
   if (!style) {
-    return {
-      fillColor: hexToRgba('#CCCCCC', 0.5),
-      strokeColor: '#232323',
-      strokeWidth: 1,
-    };
+    return { fillColor: hexToRgba('#CCCCCC', 0.5), strokeColor: '#232323', strokeWidth: 1 };
   }
   return {
     fillColor: hexToRgba(style.fillColor, style.fillOpacity),
-    strokeColor: style.dashArray != null
-      ? hexToRgba(style.color, 0.5)
-      : style.color,
-    strokeWidth: style.weight,
+    strokeColor: style.dashArray != null ? hexToRgba(style.strokeColor, 0.5) : style.strokeColor,
+    strokeWidth: style.strokeWidth,
   };
 }
 
@@ -110,7 +104,7 @@ function processRings(
   }
 }
 
-function computeRegion(features: ParcelleFeature[]): Region | null {
+function computeRegion(features: ParcelleFeature[], padding = 1.2): Region | null {
   const bbox = { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity };
 
   for (const feature of features) {
@@ -128,8 +122,8 @@ function computeRegion(features: ParcelleFeature[]): Region | null {
   return {
     latitude: (bbox.minLat + bbox.maxLat) / 2,
     longitude: (bbox.minLng + bbox.maxLng) / 2,
-    latitudeDelta: Math.max((bbox.maxLat - bbox.minLat) * 1.2, 0.01),
-    longitudeDelta: Math.max((bbox.maxLng - bbox.minLng) * 1.2, 0.01),
+    latitudeDelta: Math.max((bbox.maxLat - bbox.minLat) * padding, 0.01),
+    longitudeDelta: Math.max((bbox.maxLng - bbox.minLng) * padding, 0.01),
   };
 }
 
@@ -148,27 +142,7 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'login',     lib: 'ion', name: 'log-in-outline' },
-  { id: 'move',      lib: 'mci', name: 'arrow-all' },
-  { id: 'pin',       lib: 'ion', name: 'location-outline' },
-  { id: 'eye',       lib: 'ion', name: 'eye-outline' },
-  { id: 'info',      lib: 'ion', name: 'information-circle-outline' },
-  { id: 'tractor',   lib: 'mci', name: 'tractor' },
-  { id: 'pencil',    lib: 'ion', name: 'pencil-outline' },
-  {
-    id: 'leaf',
-    lib: 'ion',
-    name: 'leaf-outline',
-    bg: '#fef3cd',
-    color: '#f59e0b',
-  },
-  {
-    id: 'satellite',
-    lib: 'mci',
-    name: 'satellite-variant',
-    bg: '#1a3a5c',
-    color: '#ffffff',
-  },
+  { id: 'pin', lib: 'ion', name: 'location-outline' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,97 +307,183 @@ const ELEMENT_LABELS: Record<string, string> = {
 };
 
 interface LegendEntry {
+  id: string | number;
   fillColor: string;
   label: string;
   dose: number | null;
+  teneur: number | null;
   surf_ha: number;
 }
 
-const LABEL_FIELDS = [
-  'label', 'nom_sol', 'type_sol', 'libelle', 'description',
-  'sol', 'classe', 'class_name', 'nom',
+const LABEL_FIELDS_ENGRAIS = [
+  'label', 'libelle', 'classe', 'class_name', 'description', 'nom',
 ] as const;
 
-function resolveLabel(p: ZoneProperties): string {
-  for (const field of LABEL_FIELDS) {
+const LABEL_FIELDS_SEMIS = [
+  'id_type_sol', 'label', 'type_sol', 'nom_sol', 'libelle_sol',
+  'libelle', 'description', 'sol', 'classe', 'nom',
+] as const;
+
+function resolveLabel(p: ZoneDetailProperties, element: string): string {
+  // Engrais avec id_class valide : pas de label texte, la valeur est dans la colonne
+  if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
+    return '';
+  }
+  // Semis : chercher le libellé du type de sol
+  const fields = LABEL_FIELDS_SEMIS;
+  for (const field of fields) {
     const v = p[field];
     if (typeof v === 'string' && v.trim().length > 0) return v.trim();
   }
-  // semis : id_sol comme identifiant de sol
   if (p.id_sol != null) return `Sol ${p.id_sol}`;
-  // engrais : id_class comme identifiant de classe
-  if (p.id_class != null) return `Classe ${p.id_class}`;
   return '—';
 }
 
-function buildLegendEntries(zones: ZoneFeature[]): LegendEntry[] {
-  // fillColor as key: unique per QGIS class regardless of id_class availability
-  const map = new Map<string, LegendEntry>();
+const ENGRAIS_ELEMENTS = new Set(['P', 'K', 'MG']);
+
+function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[] {
+  const map = new Map<string | number, LegendEntry>();
   for (const zone of zones) {
     const p = zone.properties;
-    if (!p) continue;
-    const fill = p.style?.fillColor ?? '#CCCCCC';
-    if (!map.has(fill)) {
-      map.set(fill, {
-        fillColor: fill,
-        label: resolveLabel(p),
-        dose: typeof p.dose === 'number' && p.dose >= 0 ? p.dose : null,
+    const fillColor = zone.style?.fillColor ?? '#CCCCCC';
+
+    if (!p) {
+      if (!map.has('__no_props__')) {
+        map.set('__no_props__', {
+          id: '__no_props__',
+          fillColor,
+          label: ENGRAIS_ELEMENTS.has(element) ? 'Teneur —' : 'Sol —',
+          dose: null,
+          teneur: null,
+          surf_ha: 0,
+        });
+      }
+      continue;
+    }
+
+    let key: string | number;
+    if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
+      key = p.id_class;
+    } else if (!ENGRAIS_ELEMENTS.has(element) && p.id_type_sol != null) {
+      key = `type_${p.id_type_sol}`;
+    } else if (p.id_sol != null) {
+      key = `sol_${p.id_sol}`;
+    } else {
+      key = fillColor;
+    }
+
+    const parseDose = (raw: unknown): number | null => {
+      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+      return v !== null && !isNaN(v) && v >= 0 ? v : null;
+    };
+    const parseTeneur = (raw: unknown): number | null => {
+      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+      return v !== null && !isNaN(v) && v > 0 ? v : null;
+    };
+
+    if (!map.has(key)) {
+      map.set(key, {
+        id: key,
+        fillColor,
+        label: resolveLabel(p, element),
+        dose: parseDose(p.dose),
+        teneur: parseTeneur(p.teneur),
         surf_ha: 0,
       });
+    } else {
+      const entry = map.get(key)!;
+      if (entry.dose === null) entry.dose = parseDose(p.dose);
+      if (entry.teneur === null) entry.teneur = parseTeneur(p.teneur);
     }
-    if (typeof p.surf_ha === 'number') {
-      map.get(fill)!.surf_ha += p.surf_ha;
+    if (typeof p.surface === 'number') {
+      map.get(key)!.surf_ha += p.surface;
     }
   }
-  return Array.from(map.values());
+  const entries = Array.from(map.values());
+  if (ENGRAIS_ELEMENTS.has(element)) {
+    entries.sort((a, b) => {
+      if (a.teneur === null) return 1;
+      if (b.teneur === null) return -1;
+      return a.teneur - b.teneur;
+    });
+  }
+  return entries;
 }
 
 function MiniLegend({
   zones,
   selectedElement,
+  stats,
 }: {
-  zones: ZoneFeature[];
+  zones: ZoneDetail[];
   selectedElement: string | null;
+  stats: ParcelleStats | null;
 }) {
   if (zones.length === 0 || selectedElement === null) return null;
 
-  const entries = buildLegendEntries(zones);
-  const dosed = entries.filter(e => e.dose !== null);
-  const avgDose = dosed.length > 0
-    ? Math.round(dosed.reduce((s, e) => s + e.dose!, 0) / dosed.length)
-    : null;
-  const totalArea = entries.reduce((s, e) => s + e.surf_ha, 0);
-  const title = `${ELEMENT_LABELS[selectedElement] ?? selectedElement} · kg/ha`;
+  const entries = buildLegendEntries(zones, selectedElement);
+  const useDose = stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null);
+  const unit = useDose ? 'kg/ha' : 'mg/kg';
+  const title = `${ELEMENT_LABELS[selectedElement] ?? selectedElement}${useDose ? ' · kg/ha' : ''}`;
 
+  // Stats depuis le serveur si disponibles, sinon calculées localement
   const statParts: string[] = [];
-  if (avgDose !== null) statParts.push(`moy ${avgDose} kg/ha`);
-  if (totalArea > 0)    statParts.push(`${totalArea.toFixed(2)} ha`);
+  if (stats) {
+    const superficie = stats.superficie_parcelle > 0 ? stats.superficie_parcelle : stats.surface_totale;
+    if (superficie > 0) statParts.push(`${superficie.toFixed(2)} ha`);
+    if (useDose && stats.dose_moyenne !== null)
+      statParts.push(`moy ${stats.dose_moyenne.toFixed(1)} kg/ha`);
+    else if (!useDose && stats.teneur_moyenne !== null)
+      statParts.push(`moy ${stats.teneur_moyenne.toFixed(1)} mg/kg`);
+    if (stats.nombre_zones > 0) statParts.push(`${stats.nombre_zones} zones`);
+  }
+
+  const [expanded, setExpanded] = useState(true);
+  const hasLabels = entries.some(e => e.label.length > 0);
 
   return (
     <View style={styles.miniLegend}>
-      <Text style={styles.miniLegendTitle}>{title}</Text>
-      <ScrollView
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-        style={styles.legendScroll}>
-        {entries.map(entry => (
-          <View key={entry.fillColor} style={styles.legendRow}>
-            <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
-            <Text style={styles.legendLabel}>{entry.label}</Text>
-            {entry.dose !== null && (
-              <Text style={styles.legendDose}>{entry.dose}</Text>
-            )}
-          </View>
-        ))}
-      </ScrollView>
-      {(statParts.length > 0) && (
+      <Pressable style={styles.legendTitleRow} onPress={() => setExpanded(v => !v)}>
+        <Text style={styles.miniLegendTitle}>{title}</Text>
+        <Ionicons
+          name={expanded ? 'chevron-down-outline' : 'chevron-up-outline'}
+          size={14}
+          color="#555"
+        />
+      </Pressable>
+
+      {expanded && (
         <>
+          <View style={styles.legendRow}>
+            <View style={styles.legendSwatchSpacer} />
+            {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
+            <Text style={styles.legendColHeader}>Teneur</Text>
+            <Text style={styles.legendColHeader}>Dose</Text>
+          </View>
           <View style={styles.legendDivider} />
-          <Text style={styles.legendStats} numberOfLines={2}>
-            {statParts.join(' · ')}
-            {statParts.length > 0 ? ' · ' : ''}
-            <Text style={styles.legendInfoLink}>ℹ détails</Text>
-          </Text>
+          <ScrollView
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+            style={styles.legendScroll}>
+            {entries.map(entry => (
+              <View key={String(entry.id)} style={styles.legendRow}>
+                <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
+                {hasLabels && <Text style={styles.legendLabel}>{entry.label}</Text>}
+                <Text style={styles.legendColValue}>
+                  {entry.teneur !== null ? String(entry.teneur) : '—'}
+                </Text>
+                <Text style={styles.legendColValue}>
+                  {entry.dose !== null ? String(entry.dose) : '—'}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+          {statParts.length > 0 && (
+            <>
+              <View style={styles.legendDivider} />
+              <Text style={styles.legendStats}>{statParts.join(' · ')}</Text>
+            </>
+          )}
         </>
       )}
     </View>
@@ -642,7 +702,8 @@ export default function HomeScreen() {
   const [features, setFeatures] = useState<ParcelleFeature[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [zones, setZones] = useState<ZoneFeature[]>([]);
+  const [zones, setZones] = useState<ZoneDetail[]>([]);
+  const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
   const [loadingZones, setLoadingZones] = useState(false);
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -680,21 +741,29 @@ export default function HomeScreen() {
   useEffect(() => {
     if (selectedId === null || selectedElement === null || features.length === 0) {
       setZones([]);
+      setParcelleStats(null);
       return;
     }
     const feature = features[selectedId];
     const idParcel =
       feature.properties?.id_parcel ?? feature.properties?.id ?? feature.id;
-    console.log('[zones] id_parcel:', feature.properties?.id_parcel, '| id:', feature.properties?.id, '| feature.id:', feature.id, '→', idParcel, '| element:', selectedElement);
+
     if (idParcel == null) {
       setZones([]);
+      setParcelleStats(null);
       return;
     }
     let cancelled = false;
     setZones([]);
+    setParcelleStats(null);
     setLoadingZones(true);
-    getZones(idParcel, selectedElement)
-      .then(data => { if (!cancelled) setZones(data.features); })
+    getParcelleDetails(idParcel, selectedElement)
+      .then(data => {
+        if (!cancelled) {
+          setZones(data.zones);
+          setParcelleStats(data.stats);
+        }
+      })
       .catch((err: unknown) => {
         if (!cancelled) console.warn('[zones] Erreur:', err instanceof Error ? err.message : err);
       })
@@ -710,7 +779,7 @@ export default function HomeScreen() {
     setSelectedElement(prev => prev ?? 'P');
     setCollapseSignal(s => s + 1);
     setZones([]);
-    const region = computeRegion([features[index]]);
+    const region = computeRegion([features[index]], 1.6);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
     }
@@ -722,6 +791,7 @@ export default function HomeScreen() {
     setQuery('');
     setDropdownOpen(false);
     setZones([]);
+    setParcelleStats(null);
     const region = computeRegion(features);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
@@ -730,6 +800,7 @@ export default function HomeScreen() {
 
   const handleSelectElement = (code: string | null) => {
     setSelectedElement(code);
+    if (code !== null) setCollapseSignal(s => s + 1);
     if (code !== null && selectedId === null) {
       Alert.alert(
         'Aucune parcelle sélectionnée',
@@ -743,7 +814,7 @@ export default function HomeScreen() {
         }],
       );
     } else if (code !== null && selectedId !== null) {
-      const region = computeRegion([features[selectedId]]);
+      const region = computeRegion([features[selectedId]], 1.6);
       if (region) mapRef.current?.animateToRegion(region, 600);
     }
   };
@@ -824,7 +895,7 @@ export default function HomeScreen() {
         })}
 
         {zones.flatMap((zone, zi) => {
-          const { fillColor, strokeColor, strokeWidth } = getZoneStyle(zone);
+          const { fillColor, strokeColor, strokeWidth } = getZoneDetailStyle(zone);
           if (zone.geometry?.type === 'Polygon') {
             return [
               <Polygon
@@ -882,11 +953,13 @@ export default function HomeScreen() {
       />
 
       {/* ── 3. Barre d'icônes droite ──────────────────────────────────── */}
-      <RightIconBar
-        topOffset={iconBarTop}
-        onPressIcon={handleIconPress}
-        hasZones={zones.length > 0}
-      />
+      {selectedId !== null && (
+        <RightIconBar
+          topOffset={iconBarTop}
+          onPressIcon={handleIconPress}
+          hasZones={zones.length > 0}
+        />
+      )}
 
       {/* ── Indicateur de chargement ──────────────────────────────────── */}
       {loading && (
@@ -896,7 +969,7 @@ export default function HomeScreen() {
       )}
 
       {/* ── Mini légende zones ────────────────────────────────────────── */}
-      <MiniLegend zones={zones} selectedElement={selectedElement} />
+      <MiniLegend zones={zones} selectedElement={selectedElement} stats={parcelleStats} />
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
       <BottomPanel
@@ -1117,12 +1190,18 @@ const styles = StyleSheet.create({
   legendScroll: {
     maxHeight: 220,
   },
+  legendTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
   miniLegendTitle: {
     fontSize: 10,
     fontWeight: '700',
     color: '#333',
     letterSpacing: 0.8,
-    marginBottom: 6,
+    flex: 1,
   },
   legendRow: {
     flexDirection: 'row',
@@ -1143,9 +1222,23 @@ const styles = StyleSheet.create({
     color: '#444',
     flex: 1,
   },
-  legendDose: {
+  legendSwatchSpacer: {
+    width: 13,
+    flexShrink: 0,
+  },
+  legendColHeader: {
+    width: 40,
     fontSize: 10,
-    color: '#666',
+    color: '#444',
+    textAlign: 'right',
+    fontWeight: '700',
+    flexShrink: 0,
+  },
+  legendColValue: {
+    width: 40,
+    fontSize: 10,
+    color: '#555',
+    textAlign: 'right',
     flexShrink: 0,
   },
   legendDivider: {

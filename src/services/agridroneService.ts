@@ -43,11 +43,13 @@ export interface ZoneStyle {
 export interface ZoneProperties {
   id_class?: number | null;
   id_sol?: number | null;
+  id_type_sol?: string | number | null;
   element?: string;
   label?: string;
   nom_sol?: string;
   type_sol?: string;
   dose?: number;
+  teneur?: number | null;
   surf_ha?: number;
   style?: ZoneStyle;
   [key: string]: unknown;
@@ -79,5 +81,66 @@ export async function getParcelles(): Promise<ParcellesGeoJSON> {
 export async function getZones(idParcel: string | number, element: string): Promise<ZonesGeoJSON> {
   return apiService.get<ZonesGeoJSON>(
     `/api/v1/parcelles/qgis/zones?id_parcel=${encodeURIComponent(String(idParcel))}&element=${encodeURIComponent(element)}`,
+  );
+}
+
+// ── Nouveau endpoint détails parcelle ────────────────────────────────────────
+
+export interface ZoneDetailStyle {
+  fillColor: string;
+  fillOpacity: number;
+  strokeColor: string;
+  strokeWidth: number;
+  dashArray: string | null;
+}
+
+export interface ZoneDetailProperties {
+  id_class?: number | null;
+  id_sol?: number | null;
+  id_type_sol?: string | number | null;
+  element?: string;
+  label?: string;
+  teneur?: number | null;
+  dose?: number | null;
+  surface?: number;
+  unite?: string;
+  [key: string]: unknown;
+}
+
+export interface ZoneDetail {
+  id: string;
+  geometry:
+    | { type: 'Polygon'; coordinates: number[][][] }
+    | { type: 'MultiPolygon'; coordinates: number[][][][] };
+  properties: ZoneDetailProperties | null;
+  style: ZoneDetailStyle | null;
+}
+
+export interface ParcelleInfo {
+  id: number;
+  nom: string;
+  superficie_totale: number;
+}
+
+export interface ParcelleStats {
+  nombre_zones: number;
+  dose_moyenne: number | null;
+  teneur_moyenne: number | null;
+  surface_totale: number;
+  superficie_parcelle: number;
+}
+
+export interface ParcelleDetails {
+  parcelle: ParcelleInfo;
+  zones: ZoneDetail[];
+  stats: ParcelleStats;
+}
+
+export async function getParcelleDetails(
+  idParcel: string | number,
+  element: string,
+): Promise<ParcelleDetails> {
+  return apiService.get<ParcelleDetails>(
+    `/api/v1/parcelles/${encodeURIComponent(String(idParcel))}/details?element=${encodeURIComponent(element)}`,
   );
 }
