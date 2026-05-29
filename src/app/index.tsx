@@ -402,15 +402,20 @@ function MiniLegend({
   return (
     <View style={styles.miniLegend}>
       <Text style={styles.miniLegendTitle}>{title}</Text>
-      {entries.map(entry => (
-        <View key={entry.fillColor} style={styles.legendRow}>
-          <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
-          <Text style={styles.legendLabel} numberOfLines={1}>{entry.label}</Text>
-          {entry.dose !== null && (
-            <Text style={styles.legendDose}>{entry.dose}</Text>
-          )}
-        </View>
-      ))}
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        style={styles.legendScroll}>
+        {entries.map(entry => (
+          <View key={entry.fillColor} style={styles.legendRow}>
+            <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
+            <Text style={styles.legendLabel}>{entry.label}</Text>
+            {entry.dose !== null && (
+              <Text style={styles.legendDose}>{entry.dose}</Text>
+            )}
+          </View>
+        ))}
+      </ScrollView>
       {(statParts.length > 0) && (
         <>
           <View style={styles.legendDivider} />
@@ -1096,15 +1101,18 @@ const styles = StyleSheet.create({
   // ── Mini légende ───────────────────────────────────────────────────────────
   miniLegend: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 56,
     left: 6,
     backgroundColor: 'rgba(255,255,255,0.93)',
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    maxWidth: 210,
+    width: 270,
     zIndex: 90,
     ...SHADOW,
+  },
+  legendScroll: {
+    maxHeight: 220,
   },
   miniLegendTitle: {
     fontSize: 10,
