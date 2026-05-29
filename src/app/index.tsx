@@ -742,6 +742,9 @@ export default function HomeScreen() {
           },
         }],
       );
+    } else if (code !== null && selectedId !== null) {
+      const region = computeRegion([features[selectedId]]);
+      if (region) mapRef.current?.animateToRegion(region, 600);
     }
   };
 
@@ -1107,7 +1110,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    width: 270,
+    width: 190,
     zIndex: 90,
     ...SHADOW,
   },
