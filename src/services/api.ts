@@ -19,18 +19,15 @@ function buildHeaders(): HeadersInit {
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    switch (response.status) {
-      case 401:
-        throw new ApiError(401, 'Non authentifié');
-      case 403:
-        throw new ApiError(403, 'Accès refusé');
-      case 404:
-        throw new ApiError(404, 'Ressource introuvable');
-      case 500:
-        throw new ApiError(500, 'Erreur serveur');
-      default:
-        throw new ApiError(response.status, `Erreur HTTP ${response.status}`);
+    let detail = '';
+    try {
+      const body = await response.json() as Record<string, unknown>;
+      detail = (body.detail as string) ?? JSON.stringify(body);
+    } catch {
+      try { detail = await response.text(); } catch { /* ignore */ }
     }
+    const msg = detail ? `${response.status} — ${detail}` : `Erreur HTTP ${response.status}`;
+    throw new ApiError(response.status, msg);
   }
   return response.json() as Promise<T>;
 }
@@ -76,6 +73,18 @@ export class ApiService {
       body: JSON.stringify(body),
     });
     return handleResponse<T>(response);
+  }
+
+  async postArrayBuffer(path: string, body: unknown): Promise<ArrayBuffer> {
+    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, `Erreur HTTP ${response.status}`);
+    }
+    return response.arrayBuffer();
   }
 
   async delete<T>(path: string): Promise<T> {

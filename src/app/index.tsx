@@ -9,6 +9,8 @@
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -28,13 +30,17 @@ import { useApi } from '../hooks/useApi';
 import {
   getParcelles,
   getParcelleDetails,
+  postFormulaireEngrais,
   helloWorld,
   type ParcelleFeature,
   type ZoneDetail,
   type ZoneDetailProperties,
   type ParcelleStats,
+  type Prelevement,
 } from '../services/agridroneService';
-import MapView, { Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
+import { apiService } from '../services/api';
+import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
+import MapView, { Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,7 +148,9 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'pin', lib: 'ion', name: 'location-outline' },
+  { id: 'pin',       lib: 'ion', name: 'location-outline' },
+  { id: 'tractor',   lib: 'mci', name: 'tractor' },
+  { id: 'formulaire', lib: 'ion', name: 'document-text-outline' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,15 +265,20 @@ function RightIconBar({
   topOffset,
   onPressIcon,
   hasZones = false,
+  pinActive = false,
+  visibleIds,
 }: {
   topOffset: number;
   onPressIcon?: (id: string) => void;
   hasZones?: boolean;
+  pinActive?: boolean;
+  visibleIds?: string[];
 }) {
+  const icons = visibleIds ? RIGHT_ICONS.filter(i => visibleIds.includes(i.id)) : RIGHT_ICONS;
   return (
     <View style={[styles.iconBar, { top: topOffset }]}>
-      {RIGHT_ICONS.map((item, index) => {
-        const infoActive = item.id === 'info' && hasZones;
+      {icons.map((item, index) => {
+        const active = (item.id === 'info' && hasZones) || (item.id === 'pin' && pinActive);
         return (
           <Pressable
             key={item.id}
@@ -273,10 +286,10 @@ function RightIconBar({
             style={({ pressed }) => [
               styles.iconBtn,
               item.bg ? { backgroundColor: item.bg } : null,
-              infoActive && { backgroundColor: '#e8f0fb' },
+              active && { backgroundColor: '#e8f0fb' },
               index > 0 &&
                 !item.bg &&
-                !RIGHT_ICONS[index - 1].bg && {
+                !icons[index - 1].bg && {
                   borderTopWidth: StyleSheet.hairlineWidth,
                   borderTopColor: '#EEEEEE',
                 },
@@ -285,8 +298,12 @@ function RightIconBar({
             <Icon
               lib={item.lib}
               name={item.name}
-              size={20}
-              color={infoActive ? '#1a3a5c' : (item.color ?? '#546E7A')}
+              size={item.id === 'tractor' ? 28 : 24}
+              color={
+                item.id === 'tractor' ? '#2E7D32'
+                : active ? '#1a3a5c'
+                : (item.color ?? '#546E7A')
+              }
             />
           </Pressable>
         );
@@ -414,19 +431,23 @@ function MiniLegend({
   zones,
   selectedElement,
   stats,
+  expanded,
+  onToggle,
 }: {
   zones: ZoneDetail[];
   selectedElement: string | null;
   stats: ParcelleStats | null;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
+
   if (zones.length === 0 || selectedElement === null) return null;
 
   const entries = buildLegendEntries(zones, selectedElement);
   const useDose = stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null);
-  const unit = useDose ? 'kg/ha' : 'mg/kg';
   const title = `${ELEMENT_LABELS[selectedElement] ?? selectedElement}${useDose ? ' · kg/ha' : ''}`;
+  const hasLabels = entries.some(e => e.label.length > 0);
 
-  // Stats depuis le serveur si disponibles, sinon calculées localement
   const statParts: string[] = [];
   if (stats) {
     const superficie = stats.superficie_parcelle > 0 ? stats.superficie_parcelle : stats.surface_totale;
@@ -438,12 +459,15 @@ function MiniLegend({
     if (stats.nombre_zones > 0) statParts.push(`${stats.nombre_zones} zones`);
   }
 
-  const [expanded, setExpanded] = useState(true);
-  const hasLabels = entries.some(e => e.label.length > 0);
+  const totalDose = (() => {
+    const sum = entries.reduce((acc, e) =>
+      e.dose !== null && e.surf_ha > 0 ? acc + e.dose * e.surf_ha : acc, 0);
+    return sum > 0 ? Math.round(sum) : null;
+  })();
 
   return (
     <View style={styles.miniLegend}>
-      <Pressable style={styles.legendTitleRow} onPress={() => setExpanded(v => !v)}>
+      <Pressable style={styles.legendTitleRow} onPress={onToggle}>
         <Text style={styles.miniLegendTitle}>{title}</Text>
         <Ionicons
           name={expanded ? 'chevron-down-outline' : 'chevron-up-outline'}
@@ -482,6 +506,12 @@ function MiniLegend({
             <>
               <View style={styles.legendDivider} />
               <Text style={styles.legendStats}>{statParts.join(' · ')}</Text>
+            </>
+          )}
+          {totalDose !== null && (
+            <>
+              <View style={styles.legendDivider} />
+              <Text style={styles.legendStatsBold}>À épandre : {totalDose} kg</Text>
             </>
           )}
         </>
@@ -704,6 +734,14 @@ export default function HomeScreen() {
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [zones, setZones] = useState<ZoneDetail[]>([]);
   const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
+  const [parcelleDbId, setParcelleDbId] = useState<number | null>(null);
+  const [formulaireId, setFormulaireId] = useState<number | null>(null);
+  const [prelevements, setPrelevements] = useState<Prelevement[]>([]);
+  const [showPrelevements, setShowPrelevements] = useState(false);
+  const [legendExpanded, setLegendExpanded] = useState(true);
+  const [formulaireVisible, setFormulaireVisible] = useState(false);
+  const [loadingShapefile, setLoadingShapefile] = useState(false);
+  const iconBarOpacity = useRef(new Animated.Value(0)).current;
   const [loadingZones, setLoadingZones] = useState(false);
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -732,6 +770,15 @@ export default function HomeScreen() {
       .finally(() => setLoadingParcelles(false));
   }, []);
 
+  useEffect(() => {
+    Animated.timing(iconBarOpacity, {
+      toValue: selectedId !== null ? 1 : 0,
+      duration: 280,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [selectedId]);
+
   const filteredParcelles = features
     .map((f, i) => ({ index: i, nom: f.properties?.nom_parcel ?? 'Sans nom' }))
     .filter(({ nom }) =>
@@ -756,16 +803,20 @@ export default function HomeScreen() {
     let cancelled = false;
     setZones([]);
     setParcelleStats(null);
+    setPrelevements([]);
+    setShowPrelevements(false);
     setLoadingZones(true);
     getParcelleDetails(idParcel, selectedElement)
       .then(data => {
         if (!cancelled) {
           setZones(data.zones);
           setParcelleStats(data.stats);
+          setParcelleDbId(data.parcelle.id);
+          setPrelevements(data['prélevements'] ?? []);
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) console.warn('[zones] Erreur:', err instanceof Error ? err.message : err);
+        console.warn('[details] Erreur (cancelled=' + String(cancelled) + '):', err instanceof Error ? err.message : err);
       })
       .finally(() => { if (!cancelled) setLoadingZones(false); });
     return () => { cancelled = true; };
@@ -792,6 +843,9 @@ export default function HomeScreen() {
     setDropdownOpen(false);
     setZones([]);
     setParcelleStats(null);
+    setParcelleDbId(null);
+    setPrelevements([]);
+    setShowPrelevements(false);
     const region = computeRegion(features);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
@@ -819,18 +873,67 @@ export default function HomeScreen() {
     }
   };
 
-  const handleIconPress = async (id: string) => {
-    if (id !== 'login') return;
-    try {
-      const { data, error } = await executeHelloWorld();
-      if (error) {
-        Alert.alert('Erreur', error);
-      } else if (data) {
-        Alert.alert('Succès', data.message);
-      }
-    } catch (e: unknown) {
-      Alert.alert('Exception', e instanceof Error ? e.message : String(e));
+  const legendEntries = zones.length > 0 && selectedElement
+    ? buildLegendEntries(zones, selectedElement)
+    : [];
+  const allDosesSet = legendEntries.length > 0 && selectedId !== null &&
+    legendEntries.every(e => e.dose !== null && e.dose >= 0);
+
+  const handleTractorPress = async () => {
+    if (selectedId === null) {
+      Alert.alert('Erreur', 'Veuillez sélectionner une parcelle');
+      return;
     }
+    const dosedZones = zones.filter(z => {
+      const raw = z.properties?.dose;
+      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+      return v !== null && !isNaN(v);
+    });
+    if (dosedZones.length === 0) {
+      Alert.alert('Erreur', 'Aucune dose disponible pour cette parcelle');
+      return;
+    }
+    const nomParcelle = features[selectedId]?.properties?.nom_parcel ?? 'parcelle';
+    const body = {
+      nom_parcelle: nomParcelle,
+      element: selectedElement,
+      zones: dosedZones.map(z => ({
+        geometry: z.geometry,
+        dose: z.properties!.dose,
+      })),
+    };
+    try {
+      setLoadingShapefile(true);
+      const buffer = await apiService.postArrayBuffer('/api/v1/parcelles/shapefile', body);
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      const fileName = `${nomParcelle}_${selectedElement ?? 'zones'}_shapefile.zip`;
+      const fileUri = (FileSystem.documentDirectory ?? '') + fileName;
+      await FileSystem.writeAsStringAsync(fileUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/zip',
+          dialogTitle: `Shapefile — ${nomParcelle}`,
+        });
+      } else {
+        Alert.alert('Succès', `Fichier sauvegardé : ${fileName}`);
+      }
+    } catch (err: unknown) {
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible de générer le shapefile');
+    } finally {
+      setLoadingShapefile(false);
+    }
+  };
+
+  const handleIconPress = (id: string) => {
+    if (id === 'pin') setShowPrelevements(v => !v);
+    if (id === 'tractor') void handleTractorPress();
+    if (id === 'formulaire') setFormulaireVisible(true);
   };
 
   if (Platform.OS === 'web') {
@@ -843,7 +946,7 @@ export default function HomeScreen() {
     );
   }
 
-  const loading = loadingHello || loadingParcelles || loadingZones;
+  const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile;
   const searchTop = insets.top + 10;
   const iconBarTop = searchTop + 54;
 
@@ -926,6 +1029,21 @@ export default function HomeScreen() {
           }
           return [];
         })}
+
+        {showPrelevements && prelevements.map((p, pi) => (
+          <Marker
+            key={`prel-${pi}`}
+            coordinate={{ latitude: p.lat, longitude: p.lng }}
+            anchor={{ x: 0.5, y: 0 }}
+            tracksViewChanges={true}>
+            <View style={styles.markerWrapper}>
+              <View style={styles.markerDot} />
+              <View style={styles.markerLabelBg}>
+                <Text style={styles.markerLabelText}>{p.nom}</Text>
+              </View>
+            </View>
+          </Marker>
+        ))}
       </MapView>
 
       {/* ── Overlay fermeture dropdown au clic sur la carte ───────────── */}
@@ -953,13 +1071,21 @@ export default function HomeScreen() {
       />
 
       {/* ── 3. Barre d'icônes droite ──────────────────────────────────── */}
-      {selectedId !== null && (
+      <Animated.View
+        style={{ opacity: iconBarOpacity }}
+        pointerEvents={selectedId !== null ? 'box-none' : 'none'}>
         <RightIconBar
           topOffset={iconBarTop}
           onPressIcon={handleIconPress}
           hasZones={zones.length > 0}
+          pinActive={showPrelevements}
+          visibleIds={[
+            ...(prelevements.length > 0 ? ['pin'] : []),
+            ...(allDosesSet ? ['tractor'] : []),
+            'formulaire',
+          ]}
         />
-      )}
+      </Animated.View>
 
       {/* ── Indicateur de chargement ──────────────────────────────────── */}
       {loading && (
@@ -969,7 +1095,13 @@ export default function HomeScreen() {
       )}
 
       {/* ── Mini légende zones ────────────────────────────────────────── */}
-      <MiniLegend zones={zones} selectedElement={selectedElement} stats={parcelleStats} />
+      <MiniLegend
+        zones={zones}
+        selectedElement={selectedElement}
+        stats={parcelleStats}
+        expanded={legendExpanded}
+        onToggle={() => setLegendExpanded(v => !v)}
+      />
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
       <BottomPanel
@@ -978,6 +1110,54 @@ export default function HomeScreen() {
         onSelectElement={handleSelectElement}
         collapseSignal={collapseSignal}
       />
+
+      {/* ── Formulaire engrais ────────────────────────────────────────── */}
+      {selectedId !== null && selectedElement !== null && (
+        <FormulaireEngrais
+          visible={formulaireVisible}
+          parcelle={{
+            id: Number(
+              features[selectedId]?.properties?.id_parcel ??
+              features[selectedId]?.properties?.id ??
+              selectedId,
+            ),
+            nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
+          }}
+          element={selectedElement}
+          onClose={() => setFormulaireVisible(false)}
+          onSave={async (data: FormulaireData) => {
+            try {
+              const payload = {
+                id_parcel: parcelleDbId ?? Number(
+                  features[selectedId!]?.properties?.id_parcel ??
+                  features[selectedId!]?.properties?.id ??
+                  selectedId,
+                ),
+                element: selectedElement!,
+                annee_recolte: parseInt(data.annee_recolte, 10),
+                id_culture: data.id_culture,
+                id_frequence: data.id_frequence,
+                id_paille: data.id_paille,
+                obj_rendement: parseFloat(data.obj_rendement),
+                teneur_engrais: parseFloat(data.teneur_engrais),
+                double_culture: data.double_culture,
+                rendement_specifique_zone: data.rendement_specifique_zone,
+                dosage_manuel_zone: data.dosage_manuel_zone,
+                qte_deja_apportee: parseFloat(data.qte_deja_apportee),
+                visible_plan_fumure: data.visible_plan_fumure,
+              };
+              console.log('[formulaire] payload:', JSON.stringify(payload));
+              const result = await postFormulaireEngrais(payload);
+              setFormulaireId(result.id);
+              console.log('[formulaire] id enregistré:', result.id);
+              setFormulaireVisible(false);
+              Alert.alert('Succès', 'Formulaire enregistré ✅');
+            } catch (err: unknown) {
+              Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible d\'enregistrer le formulaire');
+            }
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -1077,8 +1257,8 @@ const styles = StyleSheet.create({
     ...SHADOW,
   },
   iconBtn: {
-    width: 46,
-    height: 46,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
@@ -1251,8 +1431,42 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 15,
   },
+  legendStatsBold: {
+    fontSize: 10,
+    color: '#333',
+    fontWeight: '700',
+    lineHeight: 15,
+  },
   legendInfoLink: {
     color: '#1a3a5c',
     fontWeight: '700',
+  },
+
+  // ── Marqueurs prélèvements ─────────────────────────────────────────────────
+  markerWrapper: {
+    width: 28,
+    alignItems: 'center',
+  },
+  markerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#FF6B00',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  markerLabelBg: {
+    backgroundColor: '#FF6B00',
+    borderRadius: 2,
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    marginTop: 1,
+    alignSelf: 'center',
+  },
+  markerLabelText: {
+    fontSize: 7,
+    color: '#fff',
+    fontWeight: '700',
+    lineHeight: 8,
   },
 });

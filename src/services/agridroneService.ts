@@ -130,10 +130,59 @@ export interface ParcelleStats {
   superficie_parcelle: number;
 }
 
+export interface Prelevement {
+  nom: string;
+  lat: number;
+  lng: number;
+}
+
 export interface ParcelleDetails {
   parcelle: ParcelleInfo;
   zones: ZoneDetail[];
   stats: ParcelleStats;
+  'prélevements'?: Prelevement[];
+}
+
+export interface ReferentielItem {
+  id: number;
+  nom: string;
+}
+
+export async function getCultures(): Promise<ReferentielItem[]> {
+  return apiService.get<ReferentielItem[]>('/api/v1/referentiel/cultures');
+}
+
+export async function getFrequences(): Promise<ReferentielItem[]> {
+  return apiService.get<ReferentielItem[]>('/api/v1/referentiel/frequences');
+}
+
+export async function getPailleOptions(): Promise<ReferentielItem[]> {
+  return apiService.get<ReferentielItem[]>('/api/v1/referentiel/paille');
+}
+
+export interface EngraisFormInput {
+  id_parcel: number;
+  element: string;
+  annee_recolte: number;
+  id_culture: number;
+  id_frequence: number;
+  id_paille: number;
+  obj_rendement: number;
+  teneur_engrais: number;
+  double_culture?: boolean;
+  rendement_specifique_zone?: boolean;
+  dosage_manuel_zone?: boolean;
+  qte_deja_apportee?: number;
+  visible_plan_fumure?: boolean;
+}
+
+export interface EngraisFormOutput {
+  id: number;
+  [key: string]: unknown;
+}
+
+export async function postFormulaireEngrais(data: EngraisFormInput): Promise<EngraisFormOutput> {
+  return apiService.post<EngraisFormOutput>('/api/v1/formulaires/engrais', data);
 }
 
 export async function getParcelleDetails(
