@@ -157,6 +157,7 @@ const RIGHT_ICONS: IconDef[] = [
   { id: 'pin',        lib: 'ion', name: 'location-outline' },
   { id: 'tractor',    lib: 'mci', name: 'tractor' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline' },
+  { id: 'attributs',  lib: 'ion', name: 'create-outline' },
   { id: 'formulaire', lib: 'ion', name: 'document-text-outline' },
 ];
 
@@ -274,6 +275,7 @@ function RightIconBar({
   hasZones = false,
   pinActive = false,
   dosesActive = false,
+  editActive = false,
   visibleIds,
 }: {
   topOffset: number;
@@ -281,6 +283,7 @@ function RightIconBar({
   hasZones?: boolean;
   pinActive?: boolean;
   dosesActive?: boolean;
+  editActive?: boolean;
   visibleIds?: string[];
 }) {
   const icons = visibleIds ? RIGHT_ICONS.filter(i => visibleIds.includes(i.id)) : RIGHT_ICONS;
@@ -289,7 +292,8 @@ function RightIconBar({
       {icons.map((item, index) => {
         const active = (item.id === 'info' && hasZones)
           || (item.id === 'pin' && pinActive)
-          || (item.id === 'doses' && dosesActive);
+          || (item.id === 'doses' && dosesActive)
+          || (item.id === 'attributs' && editActive);
         return (
           <Pressable
             key={item.id}
@@ -455,8 +459,11 @@ function MiniLegend({
   if (zones.length === 0 || selectedElement === null) return null;
 
   const entries = buildLegendEntries(zones, selectedElement);
+  const isSemis = selectedElement === 'S';
   const useDose = stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null);
-  const title = `${ELEMENT_LABELS[selectedElement] ?? selectedElement}${useDose ? ' · kg/ha' : ''}`;
+  const title = isSemis && useDose
+    ? 'SEMIS · Nbre gr/ha'
+    : `${ELEMENT_LABELS[selectedElement] ?? selectedElement}${useDose ? ' · kg/ha' : ''}`;
   const hasLabels = entries.some(e => e.label.length > 0);
 
   const statParts: string[] = [];
@@ -464,7 +471,9 @@ function MiniLegend({
     const superficie = stats.superficie_parcelle > 0 ? stats.superficie_parcelle : stats.surface_totale;
     if (superficie > 0) statParts.push(`${superficie.toFixed(2)} ha`);
     if (useDose && stats.dose_moyenne !== null)
-      statParts.push(`moy ${stats.dose_moyenne.toFixed(1)} kg/ha`);
+      statParts.push(isSemis
+        ? `moy ${Math.round(stats.dose_moyenne)} gr/ha`
+        : `moy ${stats.dose_moyenne.toFixed(1)} kg/ha`);
     else if (!useDose && stats.teneur_moyenne !== null)
       statParts.push(`moy ${stats.teneur_moyenne.toFixed(1)} mg/kg`);
     if (stats.nombre_zones > 0) statParts.push(`${stats.nombre_zones} zones`);
@@ -473,7 +482,7 @@ function MiniLegend({
   const totalDose = (() => {
     const sum = entries.reduce((acc, e) =>
       e.dose !== null && e.surf_ha > 0 ? acc + e.dose * e.surf_ha : acc, 0);
-    return sum > 0 ? Math.round(sum) : null;
+    return sum > 0 ? sum : null;
   })();
 
   return (
@@ -492,8 +501,8 @@ function MiniLegend({
           <View style={styles.legendRow}>
             <View style={styles.legendSwatchSpacer} />
             {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
-            <Text style={styles.legendColHeader}>Teneur</Text>
-            <Text style={styles.legendColHeader}>Dose</Text>
+            {!isSemis && <Text style={styles.legendColHeader}>Teneur</Text>}
+            <Text style={styles.legendColHeader}>{isSemis ? 'Gr/ha' : 'Dose'}</Text>
           </View>
           <View style={styles.legendDivider} />
           <ScrollView
@@ -504,9 +513,11 @@ function MiniLegend({
               <View key={String(entry.id)} style={styles.legendRow}>
                 <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
                 {hasLabels && <Text style={styles.legendLabel}>{entry.label}</Text>}
-                <Text style={styles.legendColValue}>
-                  {entry.teneur !== null ? String(entry.teneur) : '—'}
-                </Text>
+                {!isSemis && (
+                  <Text style={styles.legendColValue}>
+                    {entry.teneur !== null ? String(entry.teneur) : '—'}
+                  </Text>
+                )}
                 <Text style={styles.legendColValue}>
                   {entry.dose !== null ? String(entry.dose) : '—'}
                 </Text>
@@ -522,7 +533,11 @@ function MiniLegend({
           {totalDose !== null && (
             <>
               <View style={styles.legendDivider} />
-              <Text style={styles.legendStatsBold}>À épandre : {totalDose} kg</Text>
+              <Text style={styles.legendStatsBold}>
+                {isSemis
+                  ? `À épandre : ${(totalDose / 1_000_000).toFixed(2)} M gr/ha`
+                  : `À épandre : ${Math.round(totalDose)} kg`}
+              </Text>
             </>
           )}
         </>
@@ -756,6 +771,9 @@ export default function HomeScreen() {
   const [showPrelevements, setShowPrelevements] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
   const [showDoseLabels, setShowDoseLabels] = useState(false);
+  const [doseLabelTracksView, setDoseLabelTracksView] = useState(true);
+  const [editZoneMode, setEditZoneMode] = useState(false);
+  const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [formulaireVisible, setFormulaireVisible] = useState(false);
   const [loadingShapefile, setLoadingShapefile] = useState(false);
   const iconBarOpacity = useRef(new Animated.Value(0)).current;
@@ -795,6 +813,18 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, [selectedId]);
+
+  // Passe tracksViewChanges à false après le rendu initial des étiquettes
+  // pour éviter le recalcul de bounding box Android au toggle
+  useEffect(() => {
+    if (showDoseLabels) {
+      setDoseLabelTracksView(true);
+      const t = setTimeout(() => setDoseLabelTracksView(false), 600);
+      return () => clearTimeout(t);
+    } else {
+      setDoseLabelTracksView(true); // reset pour la prochaine affichage
+    }
+  }, [showDoseLabels]);
 
   const filteredParcelles = features
     .map((f, i) => ({ index: i, nom: f.properties?.nom_parcel ?? 'Sans nom' }))
@@ -864,6 +894,8 @@ export default function HomeScreen() {
     setPrelevements([]);
     setShowPrelevements(false);
     setShowDoseLabels(false);
+    setEditZoneMode(false);
+    setSelectedZoneIdx(null);
     setLastFormulaireData(null);
     const region = computeRegion(features);
     if (region) {
@@ -982,6 +1014,12 @@ export default function HomeScreen() {
   const handleIconPress = (id: string) => {
     if (id === 'pin') setShowPrelevements(v => !v);
     if (id === 'doses') setShowDoseLabels(v => !v);
+    if (id === 'attributs') {
+      setEditZoneMode(v => {
+        if (v) setSelectedZoneIdx(null); // reset sélection à la désactivation
+        return !v;
+      });
+    }
     if (id === 'tractor') void handleTractorPress();
     if (id === 'formulaire') {
       if (selectedId === null || selectedElement === null) return;
@@ -1102,6 +1140,14 @@ export default function HomeScreen() {
 
         {zones.flatMap((zone, zi) => {
           const { fillColor, strokeColor, strokeWidth } = getZoneDetailStyle(zone);
+          const isSelected = editZoneMode && selectedZoneIdx === zi;
+          const zFill   = isSelected ? 'rgba(255,0,0,0.4)' : fillColor;
+          const zStroke = isSelected ? '#FF0000' : strokeColor;
+          const zWidth  = isSelected ? 2.5 : strokeWidth;
+          const onPressZone = editZoneMode
+            ? () => setSelectedZoneIdx(prev => prev === zi ? null : zi)
+            : undefined;
+
           if (zone.geometry?.type === 'Polygon') {
             return [
               <Polygon
@@ -1110,9 +1156,11 @@ export default function HomeScreen() {
                   latitude: coord[1],
                   longitude: coord[0],
                 }))}
-                fillColor={fillColor}
-                strokeColor={strokeColor}
-                strokeWidth={strokeWidth}
+                fillColor={zFill}
+                strokeColor={zStroke}
+                strokeWidth={zWidth}
+                tappable={editZoneMode}
+                onPress={onPressZone}
               />,
             ];
           }
@@ -1124,9 +1172,11 @@ export default function HomeScreen() {
                   latitude: coord[1],
                   longitude: coord[0],
                 }))}
-                fillColor={fillColor}
-                strokeColor={strokeColor}
-                strokeWidth={strokeWidth}
+                fillColor={zFill}
+                strokeColor={zStroke}
+                strokeWidth={zWidth}
+                tappable={editZoneMode}
+                onPress={onPressZone}
               />
             ));
           }
@@ -1161,7 +1211,7 @@ export default function HomeScreen() {
             <Marker
               key={`dose-label-${zi}`}
               coordinate={{ latitude: c.lat, longitude: c.lng }}
-              tracksViewChanges={true}>
+              tracksViewChanges={doseLabelTracksView}>
               <Text style={styles.doseLabelText} allowFontScaling={false}>{doseStr}</Text>
             </Marker>
           );
@@ -1202,9 +1252,11 @@ export default function HomeScreen() {
           hasZones={zones.length > 0}
           pinActive={showPrelevements}
           dosesActive={showDoseLabels}
+          editActive={editZoneMode}
           visibleIds={[
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor', 'doses'] : []),
+            ...(zones.length > 0 ? ['attributs'] : []),
             'formulaire',
           ]}
         />
