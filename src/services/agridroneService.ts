@@ -165,8 +165,8 @@ export interface EngraisFormInput {
   element: string;
   annee_recolte: number;
   id_culture: number;
-  id_frequence: number;
-  id_paille: number;
+  id_engrais_frequence: number;
+  paille: number;
   obj_rendement: number;
   teneur_engrais: number;
   double_culture?: boolean;
@@ -179,6 +179,109 @@ export interface EngraisFormInput {
 export interface EngraisFormOutput {
   id: number;
   [key: string]: unknown;
+}
+
+export interface EngraisFormGet {
+  id: number;
+  annee_recolte: number;
+  id_culture: number;
+  double_culture: boolean;
+  id_engrais_frequence: number;
+  obj_rendement: number;
+  rendement_specifique_zone: boolean;
+  teneur_engrais: number;
+  dosage_manuel_zone: boolean;
+  qte_deja_apportee: number;
+  paille: number;
+  visible_plan_fumure: boolean;
+}
+
+export interface SemisCondition {
+  id: number;
+  condition: string;
+}
+
+export interface SemisDefaults {
+  id?: number;
+  nom: string;
+  id_culture: number;
+  annee_recolte: number;
+  id_semis_condition_sol: number;
+  allow_dosage_manuel: boolean;
+  commentaire: string | null;
+  attributs: string[];
+}
+
+export async function getSemisConditions(): Promise<SemisCondition[]> {
+  return apiService.get<SemisCondition[]>('/api/v1/formulaires/semis/conditions');
+}
+
+export async function getSemisDefaults(
+  idParcel: number,
+  idCulture: number,
+): Promise<SemisDefaults | null> {
+  try {
+    return await apiService.get<SemisDefaults>(
+      `/api/v1/formulaires/semis/defaults?id_parcel=${idParcel}&id_culture=${idCulture}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export interface SemisFormInput {
+  id_parcel: number;
+  id_culture: number;
+  annee_recolte: number;
+  id_semis_condition_sol: number;
+  allow_dosage_manuel?: boolean;
+  commentaire?: string | null;
+  // Champs spécifiques Blé (et autres cultures)
+  date_semis?: string;        // YYYY-MM-DD
+  pmg?: number;               // Poids de mille grains (g)
+  taux_germination?: number;  // %
+  second_herbicide?: boolean;
+  preference?: number;
+}
+
+export async function postFormulairesSemis(data: SemisFormInput): Promise<{ id: number }> {
+  return apiService.post<{ id: number }>('/api/v1/formulaires/semis', data);
+}
+
+export async function putFormulairesSemis(
+  id: number,
+  data: SemisFormInput,
+): Promise<{ id: number }> {
+  return apiService.put<{ id: number }>(`/api/v1/formulaires/semis/${id}`, data);
+}
+
+export interface SemisCultureResponse {
+  id_culture: number;
+}
+
+export async function getSemisCulture(
+  idParcel: number,
+): Promise<SemisCultureResponse | null> {
+  try {
+    return await apiService.get<SemisCultureResponse>(
+      `/api/v1/formulaires/semis/culture?id_parcel=${idParcel}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function getFormulaireEngrais(
+  idParcel: number,
+  element: string,
+): Promise<EngraisFormGet | null> {
+  try {
+    return await apiService.get<EngraisFormGet>(
+      `/api/v1/formulaires/engrais?id_parcel=${idParcel}&element=${encodeURIComponent(element)}`,
+    );
+  } catch {
+    return null;
+  }
 }
 
 export async function postFormulaireEngrais(data: EngraisFormInput): Promise<EngraisFormOutput> {

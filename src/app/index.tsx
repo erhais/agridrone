@@ -30,6 +30,8 @@ import { useApi } from '../hooks/useApi';
 import {
   getParcelles,
   getParcelleDetails,
+  getFormulaireEngrais,
+  getSemisCulture,
   postFormulaireEngrais,
   helloWorld,
   type ParcelleFeature,
@@ -40,6 +42,9 @@ import {
 } from '../services/agridroneService';
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
+import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
+import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
+import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import MapView, { Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -736,6 +741,11 @@ export default function HomeScreen() {
   const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
   const [parcelleDbId, setParcelleDbId] = useState<number | null>(null);
   const [formulaireId, setFormulaireId] = useState<number | null>(null);
+  const [lastFormulaireData, setLastFormulaireData] = useState<FormulaireData | null>(null);
+  const [loadingFormulaire, setLoadingFormulaire] = useState(false);
+  const [selectionCultureVisible, setSelectionCultureVisible] = useState(false);
+  const [semisCultureDefinie, setSemisCultureDefinie] = useState<CultureSelection | null>(null);
+  const [formulaireSemisVisible, setFormulaireSemisVisible] = useState(false);
   const [prelevements, setPrelevements] = useState<Prelevement[]>([]);
   const [showPrelevements, setShowPrelevements] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
@@ -846,6 +856,7 @@ export default function HomeScreen() {
     setParcelleDbId(null);
     setPrelevements([]);
     setShowPrelevements(false);
+    setLastFormulaireData(null);
     const region = computeRegion(features);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
@@ -933,7 +944,60 @@ export default function HomeScreen() {
   const handleIconPress = (id: string) => {
     if (id === 'pin') setShowPrelevements(v => !v);
     if (id === 'tractor') void handleTractorPress();
-    if (id === 'formulaire') setFormulaireVisible(true);
+    if (id === 'formulaire') {
+      if (selectedId === null || selectedElement === null) return;
+
+      // Semis : vérifier si culture déjà définie
+      if (selectedElement === 'S') {
+        const dbId = parcelleDbId ?? Number(
+          features[selectedId]?.properties?.id_parcel ??
+          features[selectedId]?.properties?.id ??
+          selectedId,
+        );
+        setLoadingFormulaire(true);
+        getSemisCulture(dbId)
+          .then(result => {
+            setSemisCultureDefinie(
+              result ? { id: result.id_culture, nom: '' } : null,
+            );
+            setSelectionCultureVisible(true);
+          })
+          .finally(() => setLoadingFormulaire(false));
+        return;
+      }
+
+      const dbId = parcelleDbId ?? Number(
+        features[selectedId]?.properties?.id_parcel ??
+        features[selectedId]?.properties?.id ??
+        selectedId,
+      );
+      setLoadingFormulaire(true);
+      getFormulaireEngrais(dbId, selectedElement)
+        .then(existing => {
+          if (existing) {
+            setFormulaireId(existing.id);
+            setLastFormulaireData({
+              annee_recolte: String(existing.annee_recolte),
+              id_culture: existing.id_culture,
+              double_culture: existing.double_culture,
+              id_engrais_frequence: existing.id_engrais_frequence,
+              obj_rendement: String(existing.obj_rendement),
+              rendement_specifique_zone: existing.rendement_specifique_zone,
+              teneur_engrais: String(existing.teneur_engrais),
+              dosage_manuel_zone: existing.dosage_manuel_zone,
+              qte_deja_apportee: String(existing.qte_deja_apportee),
+              paille: existing.paille,
+              visible_plan_fumure: existing.visible_plan_fumure,
+            });
+          } else {
+            setLastFormulaireData(null);
+          }
+        })
+        .finally(() => {
+          setLoadingFormulaire(false);
+          setFormulaireVisible(true);
+        });
+    }
   };
 
   if (Platform.OS === 'web') {
@@ -946,7 +1010,7 @@ export default function HomeScreen() {
     );
   }
 
-  const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile;
+  const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile || loadingFormulaire;
   const searchTop = insets.top + 10;
   const iconBarTop = searchTop + 54;
 
@@ -1111,6 +1175,51 @@ export default function HomeScreen() {
         collapseSignal={collapseSignal}
       />
 
+      {/* ── Sélection culture semis ───────────────────────────────────── */}
+      <SelectionCultureSemis
+        visible={selectionCultureVisible}
+        parcelleName={
+          selectedId !== null
+            ? (features[selectedId]?.properties?.nom_parcel ?? 'Parcelle')
+            : 'Parcelle'
+        }
+        initialCultureId={semisCultureDefinie?.id ?? null}
+        onClose={() => setSelectionCultureVisible(false)}
+        onSelect={culture => {
+          setSemisCultureDefinie(culture);
+          setSelectionCultureVisible(false);
+          setFormulaireSemisVisible(true);
+        }}
+      />
+
+      {/* ── Formulaires semis (selon culture) ────────────────────────── */}
+      {selectedId !== null && semisCultureDefinie !== null && (() => {
+        const parcelleSemis = {
+          id: parcelleDbId ?? Number(
+            features[selectedId]?.properties?.id_parcel ??
+            features[selectedId]?.properties?.id ??
+            selectedId,
+          ),
+          nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
+        };
+        const sharedProps = {
+          visible: formulaireSemisVisible,
+          parcelle: parcelleSemis,
+          idCulture: semisCultureDefinie.id,
+          onClose: () => setFormulaireSemisVisible(false),
+          onSuccess: () => setFormulaireSemisVisible(false),
+        };
+        switch (semisCultureDefinie.id) {
+          case 1:
+          case 14:
+          case 26:
+          case 27:
+          case 28: return <FormulaireSemisBle key="ble" {...sharedProps} />;
+          case 3: return <FormulaireSemisBetterave key="betterave" {...sharedProps} cultureName={semisCultureDefinie.nom} />;
+          default: return null;
+        }
+      })()}
+
       {/* ── Formulaire engrais ────────────────────────────────────────── */}
       {selectedId !== null && selectedElement !== null && (
         <FormulaireEngrais
@@ -1124,6 +1233,7 @@ export default function HomeScreen() {
             nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
           }}
           element={selectedElement}
+          initialData={lastFormulaireData}
           onClose={() => setFormulaireVisible(false)}
           onSave={async (data: FormulaireData) => {
             try {
@@ -1136,20 +1246,19 @@ export default function HomeScreen() {
                 element: selectedElement!,
                 annee_recolte: parseInt(data.annee_recolte, 10),
                 id_culture: data.id_culture,
-                id_frequence: data.id_frequence,
-                id_paille: data.id_paille,
-                obj_rendement: parseFloat(data.obj_rendement),
-                teneur_engrais: parseFloat(data.teneur_engrais),
+                id_engrais_frequence: data.id_engrais_frequence,
+                paille: data.paille,
+                obj_rendement: parseInt(data.obj_rendement, 10),
+                teneur_engrais: parseInt(data.teneur_engrais, 10),
                 double_culture: data.double_culture,
                 rendement_specifique_zone: data.rendement_specifique_zone,
                 dosage_manuel_zone: data.dosage_manuel_zone,
-                qte_deja_apportee: parseFloat(data.qte_deja_apportee),
+                qte_deja_apportee: parseInt(data.qte_deja_apportee, 10),
                 visible_plan_fumure: data.visible_plan_fumure,
               };
-              console.log('[formulaire] payload:', JSON.stringify(payload));
               const result = await postFormulaireEngrais(payload);
               setFormulaireId(result.id);
-              console.log('[formulaire] id enregistré:', result.id);
+              setLastFormulaireData(data);
               setFormulaireVisible(false);
               Alert.alert('Succès', 'Formulaire enregistré ✅');
             } catch (err: unknown) {

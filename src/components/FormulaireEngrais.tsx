@@ -33,13 +33,13 @@ export interface FormulaireData {
   annee_recolte: string;
   id_culture: number;
   double_culture: boolean;
-  id_frequence: number;
+  id_engrais_frequence: number;
   obj_rendement: string;
   rendement_specifique_zone: boolean;
   teneur_engrais: string;
   dosage_manuel_zone: boolean;
   qte_deja_apportee: string;
-  id_paille: number;
+  paille: number;
   visible_plan_fumure: boolean;
 }
 
@@ -47,6 +47,7 @@ interface Props {
   visible: boolean;
   parcelle: { id: number; nom: string };
   element: string;
+  initialData?: FormulaireData | null;
   onClose: () => void;
   onSave: (data: FormulaireData) => Promise<void>;
 }
@@ -78,6 +79,7 @@ export default function FormulaireEngrais({
   visible,
   parcelle,
   element,
+  initialData,
   onClose,
   onSave,
 }: Props) {
@@ -105,35 +107,57 @@ export default function FormulaireEngrais({
   const [errors,              setErrors]              = useState<Record<string, string>>({});
   const [saving,              setSaving]              = useState(false);
 
-  // Chargement des référentiels au montage
+  // Chargement des référentiels au montage — fallbacks si endpoint absent/vide
   useEffect(() => {
+    const FALLBACK_PAILLE: ReferentielItem[] = [
+      { id: 1, nom: 'Enfouie' },
+      { id: 2, nom: 'Exportée' },
+      { id: 3, nom: 'Sans objet' },
+    ];
     setLoadingRef(true);
-    Promise.all([getCultures(), getFrequences(), getPailleOptions()])
-      .then(([c, f, p]) => {
+    Promise.allSettled([getCultures(), getFrequences(), getPailleOptions()])
+      .then(([rc, rf, rp]) => {
+        const c = rc.status === 'fulfilled' && rc.value.length > 0 ? rc.value : [];
+        const f = rf.status === 'fulfilled' && rf.value.length > 0 ? rf.value : [];
+        const p = rp.status === 'fulfilled' && rp.value.length > 0 ? rp.value : FALLBACK_PAILLE;
         setCultures(c);
         setFrequences(f);
         setPailleOptions(p);
         if (c.length > 0) setIdCulture(c[0].id);
         if (f.length > 0) setIdFrequence(f[0].id);
-        if (p.length > 0) setIdPaille(p[0].id);
+        setIdPaille(p[0].id);
       })
-      .catch(err => console.warn('[formulaire] chargement référentiels:', err))
       .finally(() => setLoadingRef(false));
   }, []);
 
   useEffect(() => {
     if (visible) {
-      setAnneeRecolte(String(new Date().getFullYear()));
-      if (cultures.length > 0)      setIdCulture(cultures[0].id);
-      if (frequences.length > 0)    setIdFrequence(frequences[0].id);
-      if (pailleOptions.length > 0) setIdPaille(pailleOptions[0].id);
-      setDoubleCulture(false);
-      setObjRendement('90');
-      setRendementSpecifique(false);
-      setTeneurEngrais('100');
-      setDosageManuel(true);
-      setQteApportee('0');
-      setVisiblePlanFumure(true);
+      if (initialData) {
+        setAnneeRecolte(initialData.annee_recolte);
+        setIdCulture(initialData.id_culture);
+        setDoubleCulture(initialData.double_culture);
+        setIdFrequence(initialData.id_engrais_frequence);
+        setObjRendement(initialData.obj_rendement);
+        setRendementSpecifique(initialData.rendement_specifique_zone);
+        setTeneurEngrais(initialData.teneur_engrais);
+        setDosageManuel(initialData.dosage_manuel_zone);
+        setQteApportee(initialData.qte_deja_apportee);
+        setIdPaille(initialData.paille);
+        setVisiblePlanFumure(initialData.visible_plan_fumure);
+      } else {
+        setAnneeRecolte(String(new Date().getFullYear()));
+        if (cultures.length > 0)      setIdCulture(cultures[0].id);
+        if (frequences.length > 0)    setIdFrequence(frequences[0].id);
+        if (pailleOptions.length > 0) setIdPaille(pailleOptions[0].id);
+        else setIdPaille(1);
+        setDoubleCulture(false);
+        setObjRendement('90');
+        setRendementSpecifique(false);
+        setTeneurEngrais('100');
+        setDosageManuel(true);
+        setQteApportee('0');
+        setVisiblePlanFumure(true);
+      }
       setErrors({});
       slideAnim.setValue(SHEET_H);
       panY.setValue(0);
@@ -176,13 +200,12 @@ export default function FormulaireEngrais({
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (!anneeRecolte.trim())    e.anneeRecolte  = 'Champ obligatoire';
-    if (idCulture === 0)         e.idCulture     = 'Champ obligatoire';
-    if (idFrequence === 0)       e.idFrequence   = 'Champ obligatoire';
+    if (!anneeRecolte.trim())     e.anneeRecolte  = 'Champ obligatoire';
+    if (idCulture <= 0)          e.idCulture     = 'Champ obligatoire';
+    if (idFrequence <= 0)        e.idFrequence   = 'Champ obligatoire';
     if (!objRendement.trim())    e.objRendement  = 'Champ obligatoire';
     if (!teneurEngrais.trim())   e.teneurEngrais = 'Champ obligatoire';
     if (qteApportee.trim() === '') e.qteApportee = 'Champ obligatoire';
-    if (idPaille === 0)          e.idPaille      = 'Champ obligatoire';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -195,13 +218,13 @@ export default function FormulaireEngrais({
         annee_recolte: anneeRecolte,
         id_culture: idCulture,
         double_culture: doubleCulture,
-        id_frequence: idFrequence,
+        id_engrais_frequence: idFrequence,
         obj_rendement: objRendement,
         rendement_specifique_zone: rendementSpecifique,
         teneur_engrais: teneurEngrais,
         dosage_manuel_zone: dosageManuel,
         qte_deja_apportee: qteApportee,
-        id_paille: idPaille,
+        paille: idPaille,
         visible_plan_fumure: visiblePlanFumure,
       });
     } finally {
