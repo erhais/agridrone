@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import {
-  getSemisConditions,
+  getSemisConditionsSemis,
   getSemisDefaults,
   postFormulairesSemis,
   putFormulairesSemis,
@@ -234,7 +234,7 @@ export default function FormulaireSemisBle({
     if (!visible) return;
     setLoadingRef(true);
     Promise.all([
-      getSemisConditions(),
+      getSemisConditionsSemis(),
       getSemisDefaults(parcelle.id, idCulture),
     ])
       .then(([conds, defaults]) => {
@@ -243,15 +243,16 @@ export default function FormulaireSemisBle({
           if (defaults.id) setFormId(defaults.id);
           const yr = defaults.annee_recolte;
           setAnneeRecolte(ANNEES.includes(yr) ? String(yr) : String(getAnneeDefaut()));
-          setIdConditionSol(defaults.id_semis_condition_sol);
-          setDosageManuel(defaults.allow_dosage_manuel);
-          // Champs spécifiques Blé dans attributs étendus
+          // id_semis_condition pour les céréales (≠ id_semis_condition_sol pour betterave)
           const d = defaults as SemisDefaults & Record<string, unknown>;
-          if (typeof d.date_semis === 'string')       setDateSemis(d.date_semis);
-          if (typeof d.pmg === 'number')              setPmg(String(d.pmg));
-          if (typeof d.taux_germination === 'number') setTauxGermination(String(d.taux_germination));
+          const condId = typeof d.id_semis_condition === 'number' ? d.id_semis_condition : conds[0]?.id ?? 0;
+          setIdConditionSol(condId);
+          setDosageManuel(defaults.allow_dosage_manuel);
+          if (typeof d.date_semis === 'string')        setDateSemis(d.date_semis);
+          if (typeof d.pmg === 'number')               setPmg(String(d.pmg));
+          if (typeof d.taux_germination === 'number')  setTauxGermination(String(d.taux_germination));
           if (typeof d.second_herbicide === 'boolean') setSecondHerbicide(d.second_herbicide);
-          if (typeof d.preference === 'number')       setPreference(String(d.preference));
+          if (typeof d.preference === 'number')        setPreference(String(d.preference));
         } else if (conds.length > 0) {
           setIdConditionSol(conds[0].id);
         }
@@ -322,7 +323,7 @@ export default function FormulaireSemisBle({
       pmg: parseFloat(pmg),
       taux_germination: parseInt(tauxGermination, 10),
       allow_dosage_manuel: dosageManuel,
-      id_semis_condition_sol: idConditionSol,
+      id_semis_condition: idConditionSol,
       second_herbicide: secondHerbicide,
       ...(parseInt(preference, 10) !== 0 && { preference: parseInt(preference, 10) }),
     };
@@ -455,9 +456,9 @@ export default function FormulaireSemisBle({
               {err('tauxGermination')}
             </View>
 
-            {/* Condition de semis du sol */}
+            {/* Condition de semis */}
             <View style={styles.field}>
-              <Text style={styles.label}>Condition de semis du sol *</Text>
+              <Text style={styles.label}>Condition de semis *</Text>
               <View style={[styles.pickerWrapper, errors.idConditionSol && styles.inputError]}>
                 <Picker
                   selectedValue={idConditionSol}

@@ -32,6 +32,7 @@ import {
   getParcelleDetails,
   getFormulaireEngrais,
   getSemisCulture,
+  getSemisDefaults,
   postFormulaireEngrais,
   helloWorld,
   type ParcelleFeature,
@@ -449,6 +450,7 @@ function MiniLegend({
   expanded,
   onToggle,
   cultureName,
+  cultureId,
 }: {
   zones: ZoneDetail[];
   selectedElement: string | null;
@@ -456,6 +458,7 @@ function MiniLegend({
   expanded: boolean;
   onToggle: () => void;
   cultureName?: string | null;
+  cultureId?: number | null;
 }) {
 
   if (zones.length === 0 || selectedElement === null) return null;
@@ -463,12 +466,16 @@ function MiniLegend({
   const entries = buildLegendEntries(zones, selectedElement);
   const isSemis = selectedElement === 'S';
   const hasCulture = isSemis && cultureName && cultureName.length > 0;
+  // Betterave (id=3) : graines/ha — toutes les autres céréales : kg/q
+  const SEMIS_GRAINS_IDS = new Set([3]);
+  const isGrainCount = isSemis && cultureId != null && SEMIS_GRAINS_IDS.has(cultureId);
+  const semisUnit = isGrainCount ? 'Nbre gr/ha' : 'kg/q';
   const useDose = (stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null))
-    && (!isSemis || !!hasCulture);   // semis : dose cachée si culture non précisée
+    && (!isSemis || !!hasCulture);
   const baseTitle = ELEMENT_LABELS[selectedElement] ?? selectedElement;
   const title = isSemis
     ? hasCulture
-      ? `SEMIS · ${cultureName}${useDose ? ' · Nbre gr/ha' : ''}`
+      ? `SEMIS · ${cultureName}${useDose ? ` · ${semisUnit}` : ''}`
       : 'SEMIS'
     : `${baseTitle}${useDose ? ' · kg/ha' : ''}`;
   const hasLabels = entries.some(e => e.label.length > 0);
@@ -479,7 +486,7 @@ function MiniLegend({
     if (superficie > 0) statParts.push(`${superficie.toFixed(2)} ha`);
     if (useDose && stats.dose_moyenne !== null)
       statParts.push(isSemis
-        ? `moy ${Math.round(stats.dose_moyenne)} gr/ha`
+        ? `moy ${stats.dose_moyenne.toFixed(1)} ${semisUnit}`
         : `moy ${stats.dose_moyenne.toFixed(1)} kg/ha`);
     else if (!useDose && stats.teneur_moyenne !== null)
       statParts.push(`moy ${stats.teneur_moyenne.toFixed(1)} mg/kg`);
@@ -511,7 +518,9 @@ function MiniLegend({
             <View style={styles.legendSwatchSpacer} />
             {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
             {!isSemis && <Text style={styles.legendColHeader}>Teneur</Text>}
-            <Text style={styles.legendColHeader}>{isSemis ? 'Gr/ha' : 'Dose'}</Text>
+            <Text style={styles.legendColHeader}>
+              {isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose'}
+            </Text>
           </View>
           <View style={styles.legendDivider} />
           <ScrollView
@@ -544,7 +553,9 @@ function MiniLegend({
               <View style={styles.legendDivider} />
               <Text style={styles.legendStatsBold}>
                 {isSemis
-                  ? `À épandre : ${(totalDose / 1_000_000).toFixed(2)} M gr/ha`
+                  ? (isGrainCount
+                      ? `À épandre : ${(totalDose / 1_000_000).toFixed(2)} M gr/ha`
+                      : `À épandre : ${Math.round(totalDose)} kg`)
                   : `À épandre : ${Math.round(totalDose)} kg`}
               </Text>
             </>
@@ -862,6 +873,20 @@ export default function HomeScreen() {
     setPrelevements([]);
     setShowPrelevements(false);
     setLoadingZones(true);
+    // Pour semis : récupérer aussi le nom de la culture
+    if (selectedElement === 'S') {
+      getSemisCulture(Number(idParcel))
+        .then(async result => {
+          if (!cancelled && result && result.id_culture > 0) {
+            const defaults = await getSemisDefaults(Number(idParcel), result.id_culture);
+            if (!cancelled && defaults?.nom) {
+              setSemisCultureDefinie({ id: result.id_culture, nom: defaults.nom });
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     getParcelleDetails(idParcel, selectedElement)
       .then(data => {
         if (!cancelled) {
@@ -914,11 +939,6 @@ export default function HomeScreen() {
 
   const handleSemisSuccess = (result: SemisFormResponse) => {
     setFormulaireSemisVisible(false);
-    if (!result.doses_recalculees) {
-      Alert.alert('Succès', 'Semis enregistré ✅');
-      return;
-    }
-    // Recharger les zones semis
     const dbId = parcelleDbId ?? Number(
       selectedId !== null
         ? (features[selectedId]?.properties?.id_parcel ??
@@ -926,17 +946,26 @@ export default function HomeScreen() {
            selectedId)
         : 0,
     );
+    // Toujours recharger les zones pour avoir les doses à jour
     setLoadingZones(true);
     getParcelleDetails(dbId, 'S')
       .then(data => {
         setZones(data.zones);
         setParcelleStats(data.stats);
         setPrelevements(data['prélevements'] ?? []);
-        setShowDoseLabels(true);
-        Alert.alert(
-          'Semis enregistré ✅',
-          `${result.zones_mises_a_jour} zone(s) mise(s) à jour\n${result.zones_dosage_manuel} zone(s) en dosage manuel`,
+        // Activer les étiquettes si des zones ont des doses
+        const hasDoses = data.zones.some(
+          z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
         );
+        if (hasDoses) setShowDoseLabels(true);
+        if (result.doses_recalculees) {
+          Alert.alert(
+            'Semis enregistré ✅',
+            `${result.zones_mises_a_jour} zone(s) mise(s) à jour\n${result.zones_dosage_manuel} zone(s) en dosage manuel`,
+          );
+        } else {
+          Alert.alert('Succès', 'Semis enregistré ✅');
+        }
       })
       .catch(() => Alert.alert('Succès', 'Semis enregistré ✅'))
       .finally(() => setLoadingZones(false));
@@ -1283,7 +1312,9 @@ export default function HomeScreen() {
         <View style={styles.editZoneHint} pointerEvents="none">
           <Ionicons name="create-outline" size={14} color="#fff" />
           <Text style={styles.editZoneHintText}>
-            Appuyez sur une zone pour la sélectionner
+            {selectedElement === 'S' && semisCultureDefinie?.nom
+              ? `${semisCultureDefinie.nom} — Appuyez sur une zone`
+              : 'Appuyez sur une zone pour la sélectionner'}
           </Text>
         </View>
       )}
@@ -1296,6 +1327,7 @@ export default function HomeScreen() {
         expanded={legendExpanded}
         onToggle={() => setLegendExpanded(v => !v)}
         cultureName={selectedElement === 'S' ? (semisCultureDefinie?.nom ?? null) : null}
+        cultureId={selectedElement === 'S' ? (semisCultureDefinie?.id ?? null) : null}
       />
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}

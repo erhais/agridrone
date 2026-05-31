@@ -217,6 +217,20 @@ export async function getSemisConditions(): Promise<SemisCondition[]> {
   return apiService.get<SemisCondition[]>('/api/v1/formulaires/semis/conditions');
 }
 
+// Conditions de semis (Bonne/Passable/Mauvaise) — endpoint à ajouter côté BO
+export async function getSemisConditionsSemis(): Promise<SemisCondition[]> {
+  try {
+    return await apiService.get<SemisCondition[]>('/api/v1/formulaires/semis/conditions_semis');
+  } catch {
+    // Fallback hardcodé jusqu'à disponibilité de l'endpoint
+    return [
+      { id: 1, condition: '1. Bonne' },
+      { id: 2, condition: '2. Passable' },
+      { id: 3, condition: '3. Mauvaise' },
+    ];
+  }
+}
+
 export async function getSemisDefaults(
   idParcel: number,
   idCulture: number,
@@ -234,7 +248,8 @@ export interface SemisFormInput {
   id_parcel: number;
   id_culture: number;
   annee_recolte: number;
-  id_semis_condition_sol: number;
+  id_semis_condition_sol?: number;  // Betterave : condition du sol
+  id_semis_condition?: number;      // Céréales : condition de semis
   allow_dosage_manuel?: boolean;
   commentaire?: string | null;
   // Champs spécifiques Blé (et autres cultures)
