@@ -1,4 +1,5 @@
 import { config } from '../config/env';
+import { loadToken, refreshToken } from './authService';
 
 export class ApiError extends Error {
   constructor(
@@ -10,14 +11,25 @@ export class ApiError extends Error {
   }
 }
 
-function buildHeaders(): HeadersInit {
-  return {
-    'Content-Type': 'application/json',
-    // Authorization: `Bearer ${token}`,
-  };
+async function buildHeaders(): Promise<HeadersInit> {
+  const token = await loadToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(
+  response: Response,
+  retry: () => Promise<Response>,
+): Promise<T> {
+  if (response.status === 401) {
+    // Tenter un refresh silencieux
+    const newToken = await refreshToken();
+    if (newToken) {
+      const retried = await retry();
+      if (retried.ok) return retried.json() as Promise<T>;
+    }
+  }
   if (!response.ok) {
     let detail = '';
     try {
@@ -50,49 +62,49 @@ export class ApiService {
   }
 
   async get<T>(path: string): Promise<T> {
-    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
-      method: 'GET',
-      headers: buildHeaders(),
-    });
-    return handleResponse<T>(response);
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, { method: 'GET', headers: await buildHeaders() });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
-      method: 'POST',
-      headers: buildHeaders(),
-      body: JSON.stringify(body),
-    });
-    return handleResponse<T>(response);
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, {
+        method: 'POST', headers: await buildHeaders(), body: JSON.stringify(body),
+      });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
-      method: 'PUT',
-      headers: buildHeaders(),
-      body: JSON.stringify(body),
-    });
-    return handleResponse<T>(response);
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, {
+        method: 'PUT', headers: await buildHeaders(), body: JSON.stringify(body),
+      });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
   }
 
   async postArrayBuffer(path: string, body: unknown): Promise<ArrayBuffer> {
-    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
-      method: 'POST',
-      headers: buildHeaders(),
-      body: JSON.stringify(body),
+    const url = `${this.baseURL}${path}`;
+    const headers = await buildHeaders();
+    const response = await this.fetchWithTimeout(url, {
+      method: 'POST', headers, body: JSON.stringify(body),
     });
-    if (!response.ok) {
-      throw new ApiError(response.status, `Erreur HTTP ${response.status}`);
-    }
+    if (!response.ok) throw new ApiError(response.status, `Erreur HTTP ${response.status}`);
     return response.arrayBuffer();
   }
 
   async delete<T>(path: string): Promise<T> {
-    const response = await this.fetchWithTimeout(`${this.baseURL}${path}`, {
-      method: 'DELETE',
-      headers: buildHeaders(),
-    });
-    return handleResponse<T>(response);
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, { method: 'DELETE', headers: await buildHeaders() });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
   }
 }
 

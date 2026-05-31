@@ -45,7 +45,8 @@ import {
 } from '../services/agridroneService';
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
-import LoginModal from '../components/LoginModal';
+import LoginModal, { clearSession } from '../components/LoginModal';
+import { loadToken } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
@@ -158,6 +159,7 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
+  { id: 'logout',     lib: 'ion', name: 'log-out-outline' },
   { id: 'geolocate',  lib: 'ion', name: 'navigate-outline' },
   { id: 'pin',        lib: 'ion', name: 'location-outline' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline' },
@@ -815,6 +817,15 @@ export default function HomeScreen() {
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [mapLatDelta, setMapLatDelta] = useState(10);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  // Vérifier le token JWT au démarrage (valide + non expiré)
+  useEffect(() => {
+    loadToken()
+      .then(token => { if (token) setIsAuthenticated(true); })
+      .catch(() => {})
+      .finally(() => setSessionChecked(true));
+  }, []);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
@@ -1094,6 +1105,23 @@ export default function HomeScreen() {
   };
 
   const handleIconPress = (id: string) => {
+    if (id === 'logout') {
+      Alert.alert(
+        'Déconnexion',
+        'Voulez-vous vous déconnecter ?',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Se déconnecter',
+            style: 'destructive',
+            onPress: () => {
+              void clearSession().then(() => setIsAuthenticated(false));
+            },
+          },
+        ],
+      );
+      return;
+    }
     if (id === 'geolocate') {
       if (isGeolocating) {
         locationSubRef.current?.remove();
@@ -1395,8 +1423,8 @@ export default function HomeScreen() {
 
       {/* ── 3. Barre d'icônes droite ──────────────────────────────────── */}
       <Animated.View
-        style={{ opacity: iconBarOpacity }}
-        pointerEvents={selectedId !== null ? 'box-none' : 'none'}>
+        style={{ opacity: 1 }}
+        pointerEvents="box-none">
         <RightIconBar
           topOffset={iconBarTop}
           onPressIcon={handleIconPress}
@@ -1406,6 +1434,7 @@ export default function HomeScreen() {
           editActive={editZoneMode}
           geolocateActive={isGeolocating}
           visibleIds={[
+            'logout',
             'geolocate',
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor', 'doses'] : []),
@@ -1572,7 +1601,7 @@ export default function HomeScreen() {
       )}
 
       {/* ── Écran de connexion ────────────────────────────────────────── */}
-      {!isAuthenticated && (
+      {sessionChecked && !isAuthenticated && (
         <LoginModal onSuccess={() => setIsAuthenticated(true)} />
       )}
     </View>
