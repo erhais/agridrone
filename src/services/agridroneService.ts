@@ -147,6 +147,7 @@ export interface ParcelleDetails {
 export interface ReferentielItem {
   id: number;
   nom: string;
+  unite?: string;
 }
 
 export async function getCultures(): Promise<ReferentielItem[]> {

@@ -33,6 +33,8 @@ export interface FormulaireData {
   annee_recolte: string;
   id_culture: number;
   double_culture: boolean;
+  id_culture2?: number;
+  obj_rendement2?: string;
   id_engrais_frequence: number;
   obj_rendement: string;
   rendement_specifique_zone: boolean;
@@ -96,6 +98,8 @@ export default function FormulaireEngrais({
   const [anneeRecolte,        setAnneeRecolte]        = useState(String(new Date().getFullYear()));
   const [idCulture,           setIdCulture]           = useState(0);
   const [doubleCulture,       setDoubleCulture]       = useState(false);
+  const [idCulture2,          setIdCulture2]          = useState(0);
+  const [objRendement2,       setObjRendement2]       = useState('90');
   const [idFrequence,         setIdFrequence]         = useState(0);
   const [objRendement,        setObjRendement]        = useState('90');
   const [rendementSpecifique, setRendementSpecifique] = useState(false);
@@ -136,6 +140,8 @@ export default function FormulaireEngrais({
         setAnneeRecolte(initialData.annee_recolte);
         setIdCulture(initialData.id_culture);
         setDoubleCulture(initialData.double_culture);
+        if (initialData.id_culture2) setIdCulture2(initialData.id_culture2);
+        if (initialData.obj_rendement2) setObjRendement2(initialData.obj_rendement2);
         setIdFrequence(initialData.id_engrais_frequence);
         setObjRendement(initialData.obj_rendement);
         setRendementSpecifique(initialData.rendement_specifique_zone);
@@ -151,6 +157,8 @@ export default function FormulaireEngrais({
         if (pailleOptions.length > 0) setIdPaille(pailleOptions[0].id);
         else setIdPaille(1);
         setDoubleCulture(false);
+        setIdCulture2(0);
+        setObjRendement2('90');
         setObjRendement('90');
         setRendementSpecifique(false);
         setTeneurEngrais('100');
@@ -218,6 +226,8 @@ export default function FormulaireEngrais({
         annee_recolte: anneeRecolte,
         id_culture: idCulture,
         double_culture: doubleCulture,
+        ...(doubleCulture && idCulture2 > 0 && { id_culture2: idCulture2 }),
+        ...(doubleCulture && { obj_rendement2: objRendement2 }),
         id_engrais_frequence: idFrequence,
         obj_rendement: objRendement,
         rendement_specifique_zone: rendementSpecifique,
@@ -310,6 +320,36 @@ export default function FormulaireEngrais({
               {!!errors.idCulture && <Text style={styles.errorText}>{errors.idCulture}</Text>}
             </View>
 
+            {/* Champs double culture */}
+            {doubleCulture && (
+              <>
+                <View style={styles.field}>
+                  <Text style={styles.label}>2ème culture</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker
+                      selectedValue={idCulture2}
+                      onValueChange={v => setIdCulture2(Number(v))}
+                      style={styles.picker}
+                      itemStyle={styles.pickerItem}>
+                      <Picker.Item key={0} label="— Sélectionner —" value={0} />
+                      {cultures.map(c => <Picker.Item key={c.id} label={c.nom} value={c.id} />)}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={styles.field}>
+                  <Text style={styles.label}>
+                    Obj. Rendement 2ème culture{cultures.find(c => c.id === idCulture2)?.unite ? ` (${cultures.find(c => c.id === idCulture2)!.unite})` : ''}
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={objRendement2}
+                    onChangeText={setObjRendement2}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </>
+            )}
+
             {/* Fréquence */}
             <View style={styles.field}>
               <Text style={styles.label}>Fréquence des apports *</Text>
@@ -327,7 +367,9 @@ export default function FormulaireEngrais({
 
             {/* Obj. Rendement */}
             <View style={styles.field}>
-              <Text style={styles.label}>Obj. Rendement (kg/tonne) *</Text>
+              <Text style={styles.label}>
+                Obj. Rendement{cultures.find(c => c.id === idCulture)?.unite ? ` (${cultures.find(c => c.id === idCulture)!.unite})` : ''} *
+              </Text>
               <TextInput
                 style={[styles.input, errors.objRendement && styles.inputError]}
                 value={objRendement}

@@ -10,6 +10,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Dimensions,
   Keyboard,
   Platform,
   Pressable,
@@ -47,7 +49,7 @@ import SelectionCultureSemis, { type CultureSelection } from '../components/Sele
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import { type SemisFormResponse } from '../services/agridroneService';
-import MapView, { Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
+import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,11 +157,12 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
+  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline' },
   { id: 'pin',        lib: 'ion', name: 'location-outline' },
-  { id: 'tractor',    lib: 'mci', name: 'tractor' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline' },
   { id: 'attributs',  lib: 'ion', name: 'create-outline' },
   { id: 'formulaire', lib: 'ion', name: 'document-text-outline' },
+  { id: 'tractor',    lib: 'mci', name: 'tractor' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,6 +280,7 @@ function RightIconBar({
   pinActive = false,
   dosesActive = false,
   editActive = false,
+  geolocateActive = false,
   visibleIds,
 }: {
   topOffset: number;
@@ -285,6 +289,7 @@ function RightIconBar({
   pinActive?: boolean;
   dosesActive?: boolean;
   editActive?: boolean;
+  geolocateActive?: boolean;
   visibleIds?: string[];
 }) {
   const icons = visibleIds ? RIGHT_ICONS.filter(i => visibleIds.includes(i.id)) : RIGHT_ICONS;
@@ -294,7 +299,8 @@ function RightIconBar({
         const active = (item.id === 'info' && hasZones)
           || (item.id === 'pin' && pinActive)
           || (item.id === 'doses' && dosesActive)
-          || (item.id === 'attributs' && editActive);
+          || (item.id === 'attributs' && editActive)
+          || (item.id === 'geolocate' && geolocateActive);
         return (
           <Pressable
             key={item.id}
@@ -680,7 +686,14 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
           <AccordionSection
             title="ENGRAIS"
             isOpen={acc.engrais}
-            onToggle={() => toggleAcc('engrais')}>
+            onToggle={() => {
+              const opening = !acc.engrais;
+              toggleAcc('engrais');
+              // Sélectionne phosphore par défaut si aucun engrais actif
+              if (opening && !['P', 'K', 'MG'].includes(selectedElement ?? '')) {
+                onSelectElement('P');
+              }
+            }}>
             <View style={styles.pillsRow}>
               {ENGRAIS_PILLS.map(({ label, code }) => {
                 const active = selectedElement === code;
@@ -707,7 +720,12 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
           <AccordionSection
             title="SEMIS"
             isOpen={acc.semis}
-            onToggle={() => toggleAcc('semis')}>
+            onToggle={() => {
+              const opening = !acc.semis;
+              toggleAcc('semis');
+              if (opening) onSelectElement('S');
+              else if (selectedElement === 'S') onSelectElement(null);
+            }}>
             <View style={styles.pillsRow}>
               {(() => {
                 const active = selectedElement === 'S';
@@ -793,7 +811,13 @@ export default function HomeScreen() {
   const [showDoseLabels, setShowDoseLabels] = useState(false);
   const [doseLabelTracksView, setDoseLabelTracksView] = useState(true);
   const [editZoneMode, setEditZoneMode] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+  const [mapLatDelta, setMapLatDelta] = useState(10);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
+  const [isGeolocating, setIsGeolocating] = useState(false);
+  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
+  const geoMsgOpacity = useRef(new Animated.Value(0)).current;
   const [formulaireVisible, setFormulaireVisible] = useState(false);
   const [loadingShapefile, setLoadingShapefile] = useState(false);
   const iconBarOpacity = useRef(new Animated.Value(0)).current;
@@ -833,6 +857,18 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!isGeolocating) {
+      geoMsgOpacity.setValue(0);
+      return;
+    }
+    Animated.sequence([
+      Animated.timing(geoMsgOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(4400),
+      Animated.timing(geoMsgOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [isGeolocating]);
 
   // Passe tracksViewChanges à false après le rendu initial des étiquettes
   // pour éviter le recalcul de bounding box Android au toggle
@@ -901,7 +937,7 @@ export default function HomeScreen() {
       })
       .finally(() => { if (!cancelled) setLoadingZones(false); });
     return () => { cancelled = true; };
-  }, [selectedId, selectedElement, features]);
+  }, [selectedId, selectedElement, features, reloadTrigger]);
 
   const handleSelect = (index: number, nom: string) => {
     Keyboard.dismiss();
@@ -911,6 +947,7 @@ export default function HomeScreen() {
     setSelectedElement(prev => prev ?? 'P');
     setCollapseSignal(s => s + 1);
     setZones([]);
+    setReloadTrigger(t => t + 1);
     const region = computeRegion([features[index]], 1.6);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
@@ -995,8 +1032,13 @@ export default function HomeScreen() {
   const legendEntries = zones.length > 0 && selectedElement
     ? buildLegendEntries(zones, selectedElement)
     : [];
+  const formValuesValid = !lastFormulaireData || (
+    parseFloat(lastFormulaireData.obj_rendement) > 0 &&
+    parseFloat(lastFormulaireData.teneur_engrais) > 0
+  );
   const allDosesSet = legendEntries.length > 0 && selectedId !== null &&
-    legendEntries.every(e => e.dose !== null && e.dose >= 0);
+    formValuesValid &&
+    legendEntries.every(e => e.dose !== null && e.dose > 0);
 
   const handleTractorPress = async () => {
     if (selectedId === null) {
@@ -1050,6 +1092,42 @@ export default function HomeScreen() {
   };
 
   const handleIconPress = (id: string) => {
+    if (id === 'geolocate') {
+      if (isGeolocating) {
+        locationSubRef.current?.remove();
+        locationSubRef.current = null;
+        setIsGeolocating(false);
+        setUserLocation(null);
+        return;
+      }
+      void (async () => {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission refusée', 'Activez la localisation dans les réglages.');
+          return;
+        }
+        setIsGeolocating(true);
+        const sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, distanceInterval: 5 },
+          loc => {
+            const pos = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              accuracy: loc.coords.accuracy ?? 10,
+            };
+            setUserLocation(pos);
+            // Centrer uniquement au premier fix
+            if (!locationSubRef.current) return;
+            mapRef.current?.animateToRegion({
+              ...pos,
+              latitudeDelta: 0.0008,
+              longitudeDelta: 0.0008,
+            }, 800);
+          },
+        );
+        locationSubRef.current = sub;
+      })();
+    }
     if (id === 'pin') setShowPrelevements(v => !v);
     if (id === 'doses') setShowDoseLabels(v => !v);
     if (id === 'attributs') {
@@ -1137,7 +1215,8 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFillObject}
         provider={PROVIDER_DEFAULT}
         initialRegion={DEFAULT_REGION}
-        mapType="none">
+        mapType="none"
+        onRegionChange={r => setMapLatDelta(r.latitudeDelta)}>
         <UrlTile urlTemplate={IGN_ORTHO_URL} maximumZ={19} zIndex={-1} />
         {features.flatMap((feature, fi) => {
           const nom = feature.properties?.nom_parcel ?? 'Sans nom';
@@ -1236,24 +1315,56 @@ export default function HomeScreen() {
           </Marker>
         ))}
 
-        {/* ── Étiquettes doses ─────────────────────────────────────────── */}
-        {showDoseLabels && zones.map((zone, zi) => {
-          const dose = zone.properties?.dose;
-          const c = zone.centroid;
-          if (!c || dose == null || (dose as number) < 0) return null;
-          const v = Number(dose);
-          const doseStr = v >= 10
-            ? Math.round(v).toString()
-            : v.toFixed(2);
-          return (
+        {/* ── Position utilisateur ─────────────────────────────────────── */}
+        {userLocation && (
+          <>
+            <Circle
+              center={{ latitude: userLocation.latitude, longitude: userLocation.longitude }}
+              radius={userLocation.accuracy}
+              fillColor="rgba(0,95,255,0.08)"
+              strokeColor="rgba(0,95,255,0.5)"
+              strokeWidth={1}
+            />
             <Marker
-              key={`dose-label-${zi}`}
-              coordinate={{ latitude: c.lat, longitude: c.lng }}
-              tracksViewChanges={doseLabelTracksView}>
-              <Text style={styles.doseLabelText} allowFontScaling={false}>{doseStr}</Text>
+              coordinate={{ latitude: userLocation.latitude, longitude: userLocation.longitude }}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={true}>
+              <View style={styles.userLocationDot}>
+                <View style={styles.userLocationInner} />
+              </View>
             </Marker>
-          );
-        })}
+          </>
+        )}
+
+        {/* ── Étiquettes doses (déduplication anti-chevauchement) ──────── */}
+        {showDoseLabels && (() => {
+          const { height: screenH } = Dimensions.get('window');
+          // Seuil en degrés : ~60px en coordonnées carte
+          const threshold = mapLatDelta * (60 / screenH);
+          const placed: { lat: number; lng: number }[] = [];
+          return zones.map((zone, zi) => {
+            const dose = zone.properties?.dose;
+            const c = zone.centroid;
+            if (!c || dose == null || (dose as number) < 0) return null;
+            // Vérifier si trop proche d'une étiquette déjà placée
+            const tooClose = placed.some(p =>
+              Math.abs(p.lat - c.lat) < threshold &&
+              Math.abs(p.lng - c.lng) < threshold * 1.5,
+            );
+            if (tooClose) return null;
+            placed.push({ lat: c.lat, lng: c.lng });
+            const v = Number(dose);
+            const doseStr = v >= 10 ? Math.round(v).toString() : v.toFixed(2);
+            return (
+              <Marker
+                key={`dose-label-${zi}`}
+                coordinate={{ latitude: c.lat, longitude: c.lng }}
+                tracksViewChanges={doseLabelTracksView}>
+                <Text style={styles.doseLabelText} allowFontScaling={false}>{doseStr}</Text>
+              </Marker>
+            );
+          });
+        })()}
       </MapView>
 
       {/* ── Overlay fermeture dropdown au clic sur la carte ───────────── */}
@@ -1291,7 +1402,9 @@ export default function HomeScreen() {
           pinActive={showPrelevements}
           dosesActive={showDoseLabels}
           editActive={editZoneMode}
+          geolocateActive={isGeolocating}
           visibleIds={[
+            'geolocate',
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor', 'doses'] : []),
             ...(zones.length > 0 ? ['attributs'] : []),
@@ -1306,6 +1419,14 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color="#2196F3" />
         </View>
       )}
+
+      {/* ── Message géolocalisation ──────────────────────────────────── */}
+      <Animated.View
+        style={[styles.geoMsg, { opacity: geoMsgOpacity }]}
+        pointerEvents="none">
+        <Ionicons name="navigate" size={13} color="#fff" />
+        <Text style={styles.geoMsgText}>Géolocalisation activée</Text>
+      </Animated.View>
 
       {/* ── Message mode édition zone ────────────────────────────────── */}
       {editZoneMode && selectedZoneIdx === null && (
@@ -1423,6 +1544,23 @@ export default function HomeScreen() {
               setFormulaireId(result.id);
               setLastFormulaireData(data);
               setFormulaireVisible(false);
+              // Recharger les zones et activer les étiquettes doses
+              const dbId = parcelleDbId ?? Number(
+                features[selectedId!]?.properties?.id_parcel ??
+                features[selectedId!]?.properties?.id ??
+                selectedId,
+              );
+              getParcelleDetails(dbId, selectedElement!)
+                .then(detail => {
+                  setZones(detail.zones);
+                  setParcelleStats(detail.stats);
+                  setPrelevements(detail['prélevements'] ?? []);
+                  const hasDoses = detail.zones.some(
+                    z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
+                  );
+                  if (hasDoses) setShowDoseLabels(true);
+                })
+                .catch(() => {});
               Alert.alert('Succès', 'Formulaire enregistré ✅');
             } catch (err: unknown) {
               Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible d\'enregistrer le formulaire');
@@ -1648,6 +1786,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
+  userLocationDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,100,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userLocationInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#005FFF',
+    borderWidth: 2.5,
+    borderColor: '#fff',
+    shadowColor: '#005FFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  geoMsg: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 90,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,95,255,0.85)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    zIndex: 95,
+  },
+  geoMsgText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '500',
+  },
   editZoneHint: {
     position: 'absolute',
     alignSelf: 'center',
@@ -1742,12 +1919,12 @@ const styles = StyleSheet.create({
 
   // ── Marqueurs prélèvements ─────────────────────────────────────────────────
   doseLabelText: {
-    fontSize: 9,
-    fontWeight: 'normal',
-    color: '#000000',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingVertical: 2,
-    borderRadius: 2,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111111',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingVertical: 4,
+    borderRadius: 4,
   },
   markerWrapper: {
     width: 28,
