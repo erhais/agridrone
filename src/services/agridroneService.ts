@@ -109,6 +109,7 @@ export interface ZoneDetailProperties {
 
 export interface ZoneDetail {
   id: string;
+  centroid?: { lat: number; lng: number };
   geometry:
     | { type: 'Polygon'; coordinates: number[][][] }
     | { type: 'MultiPolygon'; coordinates: number[][][][] };
@@ -244,15 +245,25 @@ export interface SemisFormInput {
   preference?: number;
 }
 
-export async function postFormulairesSemis(data: SemisFormInput): Promise<{ id: number }> {
-  return apiService.post<{ id: number }>('/api/v1/formulaires/semis', data);
+export interface SemisFormResponse {
+  id: number;
+  num_parcel: number;
+  doses_recalculees: boolean;
+  zones_analysees: number;
+  zones_mises_a_jour: number;
+  zones_dosage_manuel: number;
+  [key: string]: unknown;
+}
+
+export async function postFormulairesSemis(data: SemisFormInput): Promise<SemisFormResponse> {
+  return apiService.post<SemisFormResponse>('/api/v1/formulaires/semis', data);
 }
 
 export async function putFormulairesSemis(
   id: number,
   data: SemisFormInput,
-): Promise<{ id: number }> {
-  return apiService.put<{ id: number }>(`/api/v1/formulaires/semis/${id}`, data);
+): Promise<SemisFormResponse> {
+  return apiService.put<SemisFormResponse>(`/api/v1/formulaires/semis/${id}`, data);
 }
 
 export interface SemisCultureResponse {

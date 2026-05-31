@@ -45,6 +45,7 @@ import FormulaireEngrais, { type FormulaireData } from '../components/Formulaire
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
+import { type SemisFormResponse } from '../services/agridroneService';
 import MapView, { Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -153,8 +154,9 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'pin',       lib: 'ion', name: 'location-outline' },
-  { id: 'tractor',   lib: 'mci', name: 'tractor' },
+  { id: 'pin',        lib: 'ion', name: 'location-outline' },
+  { id: 'tractor',    lib: 'mci', name: 'tractor' },
+  { id: 'doses',      lib: 'ion', name: 'pricetag-outline' },
   { id: 'formulaire', lib: 'ion', name: 'document-text-outline' },
 ];
 
@@ -271,19 +273,23 @@ function RightIconBar({
   onPressIcon,
   hasZones = false,
   pinActive = false,
+  dosesActive = false,
   visibleIds,
 }: {
   topOffset: number;
   onPressIcon?: (id: string) => void;
   hasZones?: boolean;
   pinActive?: boolean;
+  dosesActive?: boolean;
   visibleIds?: string[];
 }) {
   const icons = visibleIds ? RIGHT_ICONS.filter(i => visibleIds.includes(i.id)) : RIGHT_ICONS;
   return (
     <View style={[styles.iconBar, { top: topOffset }]}>
       {icons.map((item, index) => {
-        const active = (item.id === 'info' && hasZones) || (item.id === 'pin' && pinActive);
+        const active = (item.id === 'info' && hasZones)
+          || (item.id === 'pin' && pinActive)
+          || (item.id === 'doses' && dosesActive);
         return (
           <Pressable
             key={item.id}
@@ -749,6 +755,7 @@ export default function HomeScreen() {
   const [prelevements, setPrelevements] = useState<Prelevement[]>([]);
   const [showPrelevements, setShowPrelevements] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
+  const [showDoseLabels, setShowDoseLabels] = useState(false);
   const [formulaireVisible, setFormulaireVisible] = useState(false);
   const [loadingShapefile, setLoadingShapefile] = useState(false);
   const iconBarOpacity = useRef(new Animated.Value(0)).current;
@@ -856,11 +863,42 @@ export default function HomeScreen() {
     setParcelleDbId(null);
     setPrelevements([]);
     setShowPrelevements(false);
+    setShowDoseLabels(false);
     setLastFormulaireData(null);
     const region = computeRegion(features);
     if (region) {
       mapRef.current?.animateToRegion(region, 600);
     }
+  };
+
+  const handleSemisSuccess = (result: SemisFormResponse) => {
+    setFormulaireSemisVisible(false);
+    if (!result.doses_recalculees) {
+      Alert.alert('Succès', 'Semis enregistré ✅');
+      return;
+    }
+    // Recharger les zones semis
+    const dbId = parcelleDbId ?? Number(
+      selectedId !== null
+        ? (features[selectedId]?.properties?.id_parcel ??
+           features[selectedId]?.properties?.id ??
+           selectedId)
+        : 0,
+    );
+    setLoadingZones(true);
+    getParcelleDetails(dbId, 'S')
+      .then(data => {
+        setZones(data.zones);
+        setParcelleStats(data.stats);
+        setPrelevements(data['prélevements'] ?? []);
+        setShowDoseLabels(true);
+        Alert.alert(
+          'Semis enregistré ✅',
+          `${result.zones_mises_a_jour} zone(s) mise(s) à jour\n${result.zones_dosage_manuel} zone(s) en dosage manuel`,
+        );
+      })
+      .catch(() => Alert.alert('Succès', 'Semis enregistré ✅'))
+      .finally(() => setLoadingZones(false));
   };
 
   const handleSelectElement = (code: string | null) => {
@@ -943,6 +981,7 @@ export default function HomeScreen() {
 
   const handleIconPress = (id: string) => {
     if (id === 'pin') setShowPrelevements(v => !v);
+    if (id === 'doses') setShowDoseLabels(v => !v);
     if (id === 'tractor') void handleTractorPress();
     if (id === 'formulaire') {
       if (selectedId === null || selectedElement === null) return;
@@ -1108,6 +1147,25 @@ export default function HomeScreen() {
             </View>
           </Marker>
         ))}
+
+        {/* ── Étiquettes doses ─────────────────────────────────────────── */}
+        {showDoseLabels && zones.map((zone, zi) => {
+          const dose = zone.properties?.dose;
+          const c = zone.centroid;
+          if (!c || dose == null || (dose as number) < 0) return null;
+          const v = Number(dose);
+          const doseStr = v >= 10
+            ? Math.round(v).toString()
+            : v.toFixed(2);
+          return (
+            <Marker
+              key={`dose-label-${zi}`}
+              coordinate={{ latitude: c.lat, longitude: c.lng }}
+              tracksViewChanges={true}>
+              <Text style={styles.doseLabelText} allowFontScaling={false}>{doseStr}</Text>
+            </Marker>
+          );
+        })}
       </MapView>
 
       {/* ── Overlay fermeture dropdown au clic sur la carte ───────────── */}
@@ -1143,9 +1201,10 @@ export default function HomeScreen() {
           onPressIcon={handleIconPress}
           hasZones={zones.length > 0}
           pinActive={showPrelevements}
+          dosesActive={showDoseLabels}
           visibleIds={[
             ...(prelevements.length > 0 ? ['pin'] : []),
-            ...(allDosesSet ? ['tractor'] : []),
+            ...(allDosesSet ? ['tractor', 'doses'] : []),
             'formulaire',
           ]}
         />
@@ -1207,7 +1266,7 @@ export default function HomeScreen() {
           parcelle: parcelleSemis,
           idCulture: semisCultureDefinie.id,
           onClose: () => setFormulaireSemisVisible(false),
-          onSuccess: () => setFormulaireSemisVisible(false),
+          onSuccess: handleSemisSuccess,
         };
         switch (semisCultureDefinie.id) {
           case 1:
@@ -1552,6 +1611,14 @@ const styles = StyleSheet.create({
   },
 
   // ── Marqueurs prélèvements ─────────────────────────────────────────────────
+  doseLabelText: {
+    fontSize: 9,
+    fontWeight: 'normal',
+    color: '#000000',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingVertical: 2,
+    borderRadius: 2,
+  },
   markerWrapper: {
     width: 28,
     alignItems: 'center',

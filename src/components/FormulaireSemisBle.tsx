@@ -26,6 +26,7 @@ import {
   type SemisCondition,
   type SemisDefaults,
   type SemisFormInput,
+  type SemisFormResponse,
 } from '../services/agridroneService';
 import { ApiError } from '../services/api';
 
@@ -195,7 +196,7 @@ interface Props {
   parcelle: { id: number; nom: string };
   idCulture: number;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (result: SemisFormResponse) => void;
 }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
@@ -331,10 +332,7 @@ export default function FormulaireSemisBle({
         : await postFormulairesSemis(payload);
       setFormId(result.id);
       close();
-      setTimeout(() => {
-        Alert.alert('Succès', 'Semis enregistré ✅');
-        onSuccess?.();
-      }, 350);
+      setTimeout(() => onSuccess?.(result), 350);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         if (err.status === 422) {
