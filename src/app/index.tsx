@@ -448,22 +448,29 @@ function MiniLegend({
   stats,
   expanded,
   onToggle,
+  cultureName,
 }: {
   zones: ZoneDetail[];
   selectedElement: string | null;
   stats: ParcelleStats | null;
   expanded: boolean;
   onToggle: () => void;
+  cultureName?: string | null;
 }) {
 
   if (zones.length === 0 || selectedElement === null) return null;
 
   const entries = buildLegendEntries(zones, selectedElement);
   const isSemis = selectedElement === 'S';
-  const useDose = stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null);
-  const title = isSemis && useDose
-    ? 'SEMIS · Nbre gr/ha'
-    : `${ELEMENT_LABELS[selectedElement] ?? selectedElement}${useDose ? ' · kg/ha' : ''}`;
+  const hasCulture = isSemis && cultureName && cultureName.length > 0;
+  const useDose = (stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null))
+    && (!isSemis || !!hasCulture);   // semis : dose cachée si culture non précisée
+  const baseTitle = ELEMENT_LABELS[selectedElement] ?? selectedElement;
+  const title = isSemis
+    ? hasCulture
+      ? `SEMIS · ${cultureName}${useDose ? ' · Nbre gr/ha' : ''}`
+      : 'SEMIS'
+    : `${baseTitle}${useDose ? ' · kg/ha' : ''}`;
   const hasLabels = entries.some(e => e.label.length > 0);
 
   const statParts: string[] = [];
@@ -489,11 +496,13 @@ function MiniLegend({
     <View style={styles.miniLegend}>
       <Pressable style={styles.legendTitleRow} onPress={onToggle}>
         <Text style={styles.miniLegendTitle}>{title}</Text>
-        <Ionicons
-          name={expanded ? 'chevron-down-outline' : 'chevron-up-outline'}
-          size={14}
-          color="#555"
-        />
+        <View style={styles.legendToggleBtn}>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color="#fff"
+          />
+        </View>
       </Pressable>
 
       {expanded && (
@@ -1269,6 +1278,16 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* ── Message mode édition zone ────────────────────────────────── */}
+      {editZoneMode && selectedZoneIdx === null && (
+        <View style={styles.editZoneHint} pointerEvents="none">
+          <Ionicons name="create-outline" size={14} color="#fff" />
+          <Text style={styles.editZoneHintText}>
+            Appuyez sur une zone pour la sélectionner
+          </Text>
+        </View>
+      )}
+
       {/* ── Mini légende zones ────────────────────────────────────────── */}
       <MiniLegend
         zones={zones}
@@ -1276,6 +1295,7 @@ export default function HomeScreen() {
         stats={parcelleStats}
         expanded={legendExpanded}
         onToggle={() => setLegendExpanded(v => !v)}
+        cultureName={selectedElement === 'S' ? (semisCultureDefinie?.nom ?? null) : null}
       />
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
@@ -1595,6 +1615,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 6,
+  },
+  editZoneHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 120,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(30,30,30,0.75)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    zIndex: 95,
+  },
+  editZoneHintText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  legendToggleBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#546E7A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   miniLegendTitle: {
     fontSize: 10,
