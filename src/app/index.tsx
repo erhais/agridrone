@@ -45,6 +45,7 @@ import {
 } from '../services/agridroneService';
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
+import LoginModal from '../components/LoginModal';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
@@ -813,6 +814,7 @@ export default function HomeScreen() {
   const [editZoneMode, setEditZoneMode] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [mapLatDelta, setMapLatDelta] = useState(10);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
@@ -1567,6 +1569,11 @@ export default function HomeScreen() {
             }
           }}
         />
+      )}
+
+      {/* ── Écran de connexion ────────────────────────────────────────── */}
+      {!isAuthenticated && (
+        <LoginModal onSuccess={() => setIsAuthenticated(true)} />
       )}
     </View>
   );
