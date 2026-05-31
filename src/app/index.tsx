@@ -311,7 +311,6 @@ function RightIconBar({
             style={({ pressed }) => [
               styles.iconBtn,
               item.bg ? { backgroundColor: item.bg } : null,
-              active && { backgroundColor: '#e8f0fb' },
               index > 0 &&
                 !item.bg &&
                 !icons[index - 1].bg && {
@@ -320,16 +319,18 @@ function RightIconBar({
                 },
               pressed && styles.iconBtnPressed,
             ]}>
-            <Icon
-              lib={item.lib}
-              name={item.name}
-              size={item.id === 'tractor' ? 28 : 24}
-              color={
-                item.id === 'tractor' ? '#2E7D32'
-                : active ? '#1a3a5c'
-                : (item.color ?? '#546E7A')
-              }
-            />
+            <View style={active ? styles.iconHalo : undefined}>
+              <Icon
+                lib={item.lib}
+                name={item.name}
+                size={item.id === 'tractor' ? 28 : 24}
+                color={
+                  item.id === 'tractor' ? '#2E7D32'
+                  : active ? '#2E7D32'
+                  : (item.color ?? '#546E7A')
+                }
+              />
+            </View>
           </Pressable>
         );
       })}
@@ -919,8 +920,6 @@ export default function HomeScreen() {
     let cancelled = false;
     setZones([]);
     setParcelleStats(null);
-    setPrelevements([]);
-    setShowPrelevements(false);
     setLoadingZones(true);
     // Pour semis : récupérer aussi le nom de la culture
     if (selectedElement === 'S') {
@@ -960,6 +959,11 @@ export default function HomeScreen() {
     setSelectedElement(prev => prev ?? 'P');
     setCollapseSignal(s => s + 1);
     setZones([]);
+    setPrelevements([]);
+    setShowPrelevements(false);
+    setShowDoseLabels(false);
+    setEditZoneMode(false);
+    setSelectedZoneIdx(null);
     setReloadTrigger(t => t + 1);
     const region = computeRegion([features[index]], 1.6);
     if (region) {
@@ -987,8 +991,15 @@ export default function HomeScreen() {
     }
   };
 
+  const centerOnParcelle = () => {
+    if (selectedId === null) return;
+    const region = computeRegion([features[selectedId]], 1.6);
+    if (region) mapRef.current?.animateToRegion(region, 600);
+  };
+
   const handleSemisSuccess = (result: SemisFormResponse) => {
     setFormulaireSemisVisible(false);
+    centerOnParcelle();
     const dbId = parcelleDbId ?? Number(
       selectedId !== null
         ? (features[selectedId]?.properties?.id_parcel ??
@@ -1003,6 +1014,7 @@ export default function HomeScreen() {
         setZones(data.zones);
         setParcelleStats(data.stats);
         setPrelevements(data['prélevements'] ?? []);
+        setLegendExpanded(true);
         // Activer les étiquettes si des zones ont des doses
         const hasDoses = data.zones.some(
           z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
@@ -1051,7 +1063,7 @@ export default function HomeScreen() {
   );
   const allDosesSet = legendEntries.length > 0 && selectedId !== null &&
     formValuesValid &&
-    legendEntries.every(e => e.dose !== null && e.dose > 0);
+    legendEntries.every(e => e.dose !== null && e.dose >= 0);
 
   const handleTractorPress = async () => {
     if (selectedId === null) {
@@ -1437,8 +1449,8 @@ export default function HomeScreen() {
             'logout',
             'geolocate',
             ...(prelevements.length > 0 ? ['pin'] : []),
-            ...(allDosesSet ? ['tractor', 'doses'] : []),
-            ...(zones.length > 0 ? ['attributs'] : []),
+            ...(allDosesSet ? ['tractor'] : []),
+            ...(zones.length > 0 ? ['doses', 'attributs'] : []),
             'formulaire',
           ]}
         />
@@ -1575,6 +1587,7 @@ export default function HomeScreen() {
               setFormulaireId(result.id);
               setLastFormulaireData(data);
               setFormulaireVisible(false);
+              centerOnParcelle();
               // Recharger les zones et activer les étiquettes doses
               const dbId = parcelleDbId ?? Number(
                 features[selectedId!]?.properties?.id_parcel ??
@@ -1586,6 +1599,7 @@ export default function HomeScreen() {
                   setZones(detail.zones);
                   setParcelleStats(detail.stats);
                   setPrelevements(detail['prélevements'] ?? []);
+                  setLegendExpanded(true);
                   const hasDoses = detail.zones.some(
                     z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
                   );
@@ -1711,6 +1725,16 @@ const styles = StyleSheet.create({
   },
   iconBtnPressed: {
     opacity: 0.55,
+  },
+  iconHalo: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(46,125,50,0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(46,125,50,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── 4. Panneau bas ─────────────────────────────────────────────────────────
@@ -1963,29 +1987,39 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   markerWrapper: {
-    width: 28,
+    width: 50,
     alignItems: 'center',
   },
   markerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#FF6B00',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   markerLabelBg: {
     backgroundColor: '#FF6B00',
-    borderRadius: 2,
-    paddingHorizontal: 2,
-    paddingVertical: 1,
-    marginTop: 1,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    marginTop: 3,
     alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   markerLabelText: {
-    fontSize: 7,
+    fontSize: 11,
     color: '#fff',
     fontWeight: '700',
-    lineHeight: 8,
+    lineHeight: 13,
   },
 });
