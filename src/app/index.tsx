@@ -955,9 +955,7 @@ export default function HomeScreen() {
         .catch(() => {});
     }
 
-    // SL (zonage libre) utilise la même couche de zones que S
-    const elementForApi = selectedElement === 'Z' ? 'S' : selectedElement;
-    getParcelleDetails(idParcel, elementForApi)
+    getParcelleDetails(idParcel, selectedElement)
       .then(data => {
         if (!cancelled) {
           setZones(data.zones);
