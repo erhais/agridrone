@@ -1655,6 +1655,13 @@ export default function HomeScreen() {
               .then(data => {
                 setZones(data.zones);
                 setParcelleStats(data.stats);
+                setPrelevements(data['prélevements'] ?? []);
+                // Activer étiquettes doses + déplier légende
+                const hasDoses = data.zones.some(
+                  z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
+                );
+                if (hasDoses) setShowDoseLabels(true);
+                setLegendExpanded(true);
               })
               .finally(() => setLoadingZones(false));
           }}

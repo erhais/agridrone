@@ -171,7 +171,7 @@ export default function FormulaireZoneSemis({
     if (persoDose || doseBase == null || pierreRef.length === 0) return;
     const coef = getPierreCoef(pierreRef, txPierre);
     const calculated = doseBase * (1 + coef / 100);
-    setDose(calculated.toFixed(2));
+    setDose(formatDose(calculated));
   }, [txPierre, doseBase, pierreRef, persoDose]);
 
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function FormulaireZoneSemis({
     const base = p.dose_base ?? p.dose ?? null;
     setDoseBase(base != null ? Number(base) : null);
     setTxPierre(p.tx_pierre != null ? Math.min(SLIDER_MAX, Math.round(Number(p.tx_pierre))) : 0);
-    setDose(p.dose != null ? String(p.dose) : '');
+    setDose(p.dose != null ? formatDose(Number(p.dose)) : '');
     setPersoDose(false);
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
@@ -238,7 +238,10 @@ export default function FormulaireZoneSemis({
     }
   };
 
-  const zoneLabel = String.fromCharCode(64 + (zone.properties.id_class ?? zone.num_zone));
+  const zoneLabel   = String.fromCharCode(64 + (zone.properties.id_class ?? zone.num_zone));
+  const isGrains    = culture.id === 3; // Betterave → graines/ha
+  const doseUnit    = isGrains ? 'gr/ha' : 'kg/q';
+  const formatDose  = (v: number) => isGrains ? String(Math.round(v)) : v.toFixed(2);
 
   return (
     <Animated.View
@@ -318,7 +321,7 @@ export default function FormulaireZoneSemis({
 
               <View style={styles.field}>
                 <View style={styles.doseLabelRow}>
-                  <Text style={styles.label}>Dose</Text>
+                  <Text style={styles.label}>Dose <Text style={styles.doseUnit}>{doseUnit}</Text></Text>
                   {!persoDose && pierreRef.length > 0 && (
                     <Text style={styles.doseCoefHint}>
                       coef. pierre : +{getPierreCoef(pierreRef, txPierre).toFixed(0)} %
@@ -401,6 +404,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '700', color: '#555', letterSpacing: 0.8, marginLeft: 4 },
   field:        { gap: 4 },
   doseLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  doseUnit:     { fontSize: 11, color: '#888', fontWeight: '400' },
   doseCoefHint: { fontSize: 11, color: '#3B6D11', fontWeight: '600' },
   label:        { fontSize: 12, fontWeight: '600', color: '#444' },
   input: {
