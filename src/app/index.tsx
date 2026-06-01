@@ -33,6 +33,8 @@ import {
   getParcelles,
   getParcelleDetails,
   getFormulaireEngrais,
+  getZoneEngraisDetail,
+  patchZoneEngrais,
   getSemisCulture,
   getSemisDefaults,
   postFormulaireEngrais,
@@ -49,6 +51,7 @@ import LoginModal, { clearSession } from '../components/LoginModal';
 import { loadToken } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
+import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import { type SemisFormResponse } from '../services/agridroneService';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
@@ -828,6 +831,12 @@ export default function HomeScreen() {
       .finally(() => setSessionChecked(true));
   }, []);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
+  const [showEditHint, setShowEditHint] = useState(false);
+  const [zoneFormVisible, setZoneFormVisible] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
+  const [zoneEngraisDetail, setZoneEngraisDetail] = useState<import('../services/agridroneService').EngraisZoneDetail | null>(null);
+  const [zoneAllowDosage, setZoneAllowDosage] = useState(false);
+  const [zoneAllowRendement, setZoneAllowRendement] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
@@ -871,6 +880,16 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (editZoneMode) {
+      setShowEditHint(true);
+      const t = setTimeout(() => setShowEditHint(false), 6000);
+      return () => clearTimeout(t);
+    } else {
+      setShowEditHint(false);
+    }
+  }, [editZoneMode]);
 
   useEffect(() => {
     if (!isGeolocating) {
@@ -1313,7 +1332,37 @@ export default function HomeScreen() {
           const zStroke = isSelected ? '#FF0000' : strokeColor;
           const zWidth  = isSelected ? 2.5 : strokeWidth;
           const onPressZone = editZoneMode
-            ? () => setSelectedZoneIdx(prev => prev === zi ? null : zi)
+            ? () => {
+                setSelectedZoneIdx(prev => prev === zi ? null : zi);
+                setSelectedZone(zone);
+                const numZone = zone.num_zone ?? (zi + 1);
+                const fert = selectedElement ?? 'P';
+                const sidx = selectedId ?? 0;
+                const dbId = parcelleDbId ?? Number(
+                  features[sidx]?.properties?.id_parcel ??
+                  features[sidx]?.properties?.id ??
+                  sidx,
+                );
+                setLoadingZones(true);
+                Promise.all([
+                  getZoneEngraisDetail(numZone, fert),
+                  getFormulaireEngrais(dbId, fert),
+                ])
+                  .then(([detail, formData]) => {
+                    setZoneEngraisDetail(detail);
+                    const dosage = formData?.dosage_manuel_zone
+                      ?? lastFormulaireData?.dosage_manuel_zone
+                      ?? false;
+                    const rend = formData?.rendement_specifique_zone
+                      ?? lastFormulaireData?.rendement_specifique_zone
+                      ?? false;
+                    console.log('[zone-auth] allowDosage:', dosage, '| allowRend:', rend, '| formData:', formData?.dosage_manuel_zone, formData?.rendement_specifique_zone);
+                    setZoneAllowDosage(dosage);
+                    setZoneAllowRendement(rend);
+                    setZoneFormVisible(true);
+                  })
+                  .finally(() => setLoadingZones(false));
+              }
             : undefined;
 
           if (zone.geometry?.type === 'Polygon') {
@@ -1481,13 +1530,13 @@ export default function HomeScreen() {
       </Animated.View>
 
       {/* ── Message mode édition zone ────────────────────────────────── */}
-      {editZoneMode && selectedZoneIdx === null && (
+      {editZoneMode && selectedZoneIdx === null && showEditHint && (
         <View style={styles.editZoneHint} pointerEvents="none">
           <Ionicons name="create-outline" size={14} color="#fff" />
           <Text style={styles.editZoneHintText}>
             {selectedElement === 'S' && semisCultureDefinie?.nom
-              ? `${semisCultureDefinie.nom} — Appuyez sur une zone`
-              : 'Appuyez sur une zone pour la sélectionner'}
+              ? `${semisCultureDefinie.nom} — Cliquer sur une zone de la parcelle`
+              : 'Cliquer sur une zone de la parcelle'}
           </Text>
         </View>
       )}
@@ -1510,6 +1559,45 @@ export default function HomeScreen() {
         onSelectElement={handleSelectElement}
         collapseSignal={collapseSignal}
       />
+
+      {/* ── Formulaire zone engrais ──────────────────────────────────── */}
+      {selectedZone !== null && selectedId !== null && ENGRAIS_ELEMENTS.has(selectedElement ?? '') && (
+        <FormulaireZoneEngrais
+          visible={zoneFormVisible}
+          zone={{
+            id: selectedZone.id,
+            num_zone: selectedZone.num_zone ?? (zones.indexOf(selectedZone) + 1),
+            properties: selectedZone.properties ?? {},
+            style: selectedZone.style ? { fillColor: selectedZone.style.fillColor } : undefined,
+          }}
+          parcelle={{
+            id: parcelleDbId ?? Number(features[selectedId]?.properties?.id_parcel ?? selectedId),
+            nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
+          }}
+          rendementGlobal={lastFormulaireData ? parseFloat(lastFormulaireData.obj_rendement) : undefined}
+          initialDetail={zoneEngraisDetail}
+          allowDosageManuel={zoneAllowDosage}
+          allowRendementSpec={zoneAllowRendement}
+          onClose={() => setZoneFormVisible(false)}
+          onRecopie={() => {
+            setZoneFormVisible(false);
+            Alert.alert('Recopie', 'Fonctionnalité à implémenter');
+          }}
+          onSave={async (data: ZoneEngraisData) => {
+            const fert = selectedElement ?? 'P';
+            const rendVal = data.perso_rendement && data.rendement > 0 ? data.rendement : null;
+            const doseVal = data.perso_dose && data.dose >= 0 ? data.dose : null;
+            if (rendVal !== null || doseVal !== null) {
+              await patchZoneEngrais(data.num_zone, fert, {
+                rendement: rendVal,
+                dose: doseVal,
+              });
+            }
+            setZoneFormVisible(false);
+            Alert.alert('Succès', 'Zone enregistrée ✅');
+          }}
+        />
+      )}
 
       {/* ── Sélection culture semis ───────────────────────────────────── */}
       <SelectionCultureSemis

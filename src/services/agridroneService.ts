@@ -109,6 +109,7 @@ export interface ZoneDetailProperties {
 
 export interface ZoneDetail {
   id: string;
+  num_zone?: number;
   centroid?: { lat: number; lng: number };
   geometry:
     | { type: 'Polygon'; coordinates: number[][][] }
@@ -160,6 +161,48 @@ export async function getFrequences(): Promise<ReferentielItem[]> {
 
 export async function getPailleOptions(): Promise<ReferentielItem[]> {
   return apiService.get<ReferentielItem[]>('/api/v1/referentiel/paille');
+}
+
+export interface EngraisZoneDetail {
+  num_parcel: number;
+  fertilisant: string;
+  id_sol: number | null;
+  nom_sol: string | null;
+  teneur: number | null;
+  rendement: number | null;
+  perso_rendement: number | null;  // 0 ou 1
+  ph: number | null;
+  dose: number | null;
+  perso_dose: number | null;       // 0 ou 1
+}
+
+export interface EngraisZonePatch {
+  rendement?: number | null;
+  dose?: number | null;
+}
+
+export async function patchZoneEngrais(
+  numZone: number,
+  fertilisant: string,
+  data: EngraisZonePatch,
+): Promise<unknown> {
+  return apiService.patch<unknown>(
+    `/api/v1/formulaires/zones/${numZone}?fertilisant=${encodeURIComponent(fertilisant)}`,
+    data,
+  );
+}
+
+export async function getZoneEngraisDetail(
+  numZone: number,
+  fertilisant: string,
+): Promise<EngraisZoneDetail | null> {
+  try {
+    return await apiService.get<EngraisZoneDetail>(
+      `/api/v1/formulaires/zones/${numZone}?fertilisant=${encodeURIComponent(fertilisant)}`,
+    );
+  } catch {
+    return null;
+  }
 }
 
 export interface EngraisFormInput {

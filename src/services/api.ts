@@ -99,6 +99,16 @@ export class ApiService {
     return response.arrayBuffer();
   }
 
+  async patch<T>(path: string, body: unknown): Promise<T> {
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, {
+        method: 'PATCH', headers: await buildHeaders(), body: JSON.stringify(body),
+      });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
+  }
+
   async delete<T>(path: string): Promise<T> {
     const url = `${this.baseURL}${path}`;
     const doRequest = async () =>
