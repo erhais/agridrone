@@ -48,7 +48,7 @@ import {
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
 import LoginModal, { clearSession } from '../components/LoginModal';
-import { loadToken } from '../services/authService';
+import { loadToken, refreshToken } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
@@ -100,7 +100,7 @@ function getZoneDetailStyle(zone: ZoneDetail): {
   strokeColor: string;
   strokeWidth: number;
 } {
-  const style = zone.style as (ZoneDetailStyle & { color?: string; weight?: number }) | null;
+  const style = zone.style as ({ fillColor?: string; fillOpacity?: number; strokeColor?: string; color?: string; strokeWidth?: number; weight?: number; dashArray?: string | null } | null);
   if (!style) {
     return { fillColor: hexToRgba('#CCCCCC', 0.5), strokeColor: '#232323', strokeWidth: 1 };
   }
@@ -857,12 +857,19 @@ export default function HomeScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
 
-  // Vérifier le token JWT au démarrage (valide + non expiré)
+  // Vérifier le token JWT au démarrage — refresh silencieux si expiré
   useEffect(() => {
-    loadToken()
-      .then(token => { if (token) setIsAuthenticated(true); })
-      .catch(() => {})
-      .finally(() => setSessionChecked(true));
+    (async () => {
+      try {
+        let token = await loadToken();
+        if (!token) token = await refreshToken();
+        if (token) setIsAuthenticated(true);
+      } catch {
+        // pas de session valide → LoginModal
+      } finally {
+        setSessionChecked(true);
+      }
+    })();
   }, []);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [showEditHint, setShowEditHint] = useState(false);
