@@ -393,8 +393,24 @@ function resolveLabel(p: ZoneDetailProperties, element: string): string {
 
 const ENGRAIS_ELEMENTS = new Set(['P', 'K', 'MG']);
 
+// Accumulateurs internes pour le calcul de la dose moyenne pondérée par groupe
+interface LegendAcc extends LegendEntry {
+  _doseSum: number;   // somme(dose_i × surface_i)
+  _doseSurf: number;  // somme(surface_i) où dose_i != null
+}
+
 function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[] {
-  const map = new Map<string | number, LegendEntry>();
+  const map = new Map<string | number, LegendAcc>();
+
+  const parseDose = (raw: unknown): number | null => {
+    const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+    return v !== null && !isNaN(v) && v >= 0 ? v : null;
+  };
+  const parseTeneur = (raw: unknown): number | null => {
+    const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+    return v !== null && !isNaN(v) && v > 0 ? v : null;
+  };
+
   for (const zone of zones) {
     const p = zone.properties;
     const fillColor = zone.style?.fillColor ?? '#CCCCCC';
@@ -402,12 +418,9 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
     if (!p) {
       if (!map.has('__no_props__')) {
         map.set('__no_props__', {
-          id: '__no_props__',
-          fillColor,
+          id: '__no_props__', fillColor,
           label: ENGRAIS_ELEMENTS.has(element) ? 'Teneur —' : 'Sol —',
-          dose: null,
-          teneur: null,
-          surf_ha: 0,
+          dose: null, teneur: null, surf_ha: 0, _doseSum: 0, _doseSurf: 0,
         });
       }
       continue;
@@ -415,7 +428,6 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
 
     let key: string | number;
     if (element === 'Z') {
-      // Zonage libre : chaque zone a sa propre dose — clé = num_zone unique
       key = zone.num_zone ?? zone.id;
     } else if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
       key = p.id_class;
@@ -427,34 +439,34 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
       key = fillColor;
     }
 
-    const parseDose = (raw: unknown): number | null => {
-      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
-      return v !== null && !isNaN(v) && v >= 0 ? v : null;
-    };
-    const parseTeneur = (raw: unknown): number | null => {
-      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
-      return v !== null && !isNaN(v) && v > 0 ? v : null;
-    };
+    const dose = parseDose(p.dose);
+    const surf = typeof p.surface === 'number' ? p.surface : 0;
 
     if (!map.has(key)) {
       map.set(key, {
-        id: key,
-        fillColor,
+        id: key, fillColor,
         label: resolveLabel(p, element),
-        dose: parseDose(p.dose),
-        teneur: parseTeneur(p.teneur),
-        surf_ha: 0,
+        dose: null, teneur: parseTeneur(p.teneur), surf_ha: surf,
+        _doseSum: dose !== null ? dose * surf : 0,
+        _doseSurf: dose !== null ? surf : 0,
       });
     } else {
       const entry = map.get(key)!;
-      if (entry.dose === null) entry.dose = parseDose(p.dose);
+      entry.surf_ha += surf;
+      if (dose !== null) {
+        entry._doseSum += dose * surf;
+        entry._doseSurf += surf;
+      }
       if (entry.teneur === null) entry.teneur = parseTeneur(p.teneur);
     }
-    if (typeof p.surface === 'number') {
-      map.get(key)!.surf_ha += p.surface;
-    }
   }
-  const entries = Array.from(map.values());
+
+  // Calcul de la dose moyenne pondérée par surface pour chaque groupe
+  const entries: LegendEntry[] = Array.from(map.values()).map(acc => {
+    const dose = acc._doseSurf > 0 ? acc._doseSum / acc._doseSurf : null;
+    return { id: acc.id, fillColor: acc.fillColor, label: acc.label, dose, teneur: acc.teneur, surf_ha: acc.surf_ha };
+  });
+
   if (ENGRAIS_ELEMENTS.has(element)) {
     entries.sort((a, b) => {
       if (a.teneur === null) return 1;
