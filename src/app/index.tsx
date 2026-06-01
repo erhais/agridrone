@@ -79,7 +79,8 @@ const DEFAULT_REGION: Region = {
 // Helpers style zones
 // ─────────────────────────────────────────────────────────────────────────────
 
-function hexToRgba(hex: string, opacity: number): string {
+function hexToRgba(hex: string | null | undefined, opacity: number): string {
+  if (!hex || typeof hex !== 'string') return `rgba(128,128,128,${opacity})`;
   const clean = hex.replace('#', '');
   let r: number, g: number, b: number;
   if (clean.length === 3) {
@@ -99,14 +100,16 @@ function getZoneDetailStyle(zone: ZoneDetail): {
   strokeColor: string;
   strokeWidth: number;
 } {
-  const style = zone.style;
+  const style = zone.style as (ZoneDetailStyle & { color?: string; weight?: number }) | null;
   if (!style) {
     return { fillColor: hexToRgba('#CCCCCC', 0.5), strokeColor: '#232323', strokeWidth: 1 };
   }
+  const strokeColor = style.strokeColor ?? style.color ?? '#232323';
+  const strokeWidth = style.strokeWidth ?? style.weight ?? 1;
   return {
-    fillColor: hexToRgba(style.fillColor, style.fillOpacity),
-    strokeColor: style.dashArray != null ? hexToRgba(style.strokeColor, 0.5) : style.strokeColor,
-    strokeWidth: style.strokeWidth,
+    fillColor: hexToRgba(style.fillColor, style.fillOpacity ?? 0.75),
+    strokeColor: style.dashArray != null ? hexToRgba(strokeColor, 0.5) : strokeColor,
+    strokeWidth,
   };
 }
 
@@ -500,11 +503,11 @@ function MiniLegend({
   if (stats) {
     const superficie = stats.superficie_parcelle > 0 ? stats.superficie_parcelle : stats.surface_totale;
     if (superficie > 0) statParts.push(`${superficie.toFixed(2)} ha`);
-    if (useDose && stats.dose_moyenne !== null)
+    if (useDose && stats.dose_moyenne != null)
       statParts.push(isSemis
         ? `moy ${stats.dose_moyenne.toFixed(1)} ${semisUnit}`
         : `moy ${stats.dose_moyenne.toFixed(1)} kg/ha`);
-    else if (!useDose && stats.teneur_moyenne !== null)
+    else if (!useDose && stats.teneur_moyenne != null)
       statParts.push(`moy ${stats.teneur_moyenne.toFixed(1)} mg/kg`);
     if (stats.nombre_zones > 0) statParts.push(`${stats.nombre_zones} zones`);
   }
