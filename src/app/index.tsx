@@ -553,12 +553,19 @@ function MiniLegend({
     <View style={[styles.miniLegend, legendLarge && { width: 270 }]}>
       <Pressable style={styles.legendTitleRow} onPress={handleTitlePress}>
         <Text style={[styles.miniLegendTitle, legendLarge && { fontSize: 13 }]}>{title}</Text>
-        <View style={styles.legendToggleBtn}>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
+        <View style={styles.legendHeaderBtns}>
+          <MaterialCommunityIcons
+            name={legendLarge ? 'magnify-minus-outline' : 'magnify-plus-outline'}
             size={16}
-            color="#fff"
+            color="#546E7A"
           />
+          <View style={styles.legendToggleBtn}>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color="#fff"
+            />
+          </View>
         </View>
       </Pressable>
 
@@ -2211,6 +2218,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '500',
+  },
+  legendHeaderBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   legendToggleBtn: {
     width: 22,
