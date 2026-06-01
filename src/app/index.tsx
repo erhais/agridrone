@@ -492,11 +492,13 @@ function MiniLegend({
   const useDose = (stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null))
     && (!isSemis || !!hasCulture);
   const baseTitle = ELEMENT_LABELS[selectedElement] ?? selectedElement;
-  const title = isSemis
-    ? hasCulture
-      ? `SEMIS · ${cultureName}${useDose ? ` · ${semisUnit}` : ''}`
-      : 'SEMIS'
-    : `${baseTitle}${useDose ? ' · kg/ha' : ''}`;
+  const title = selectedElement === 'Z'
+    ? `${baseTitle}${useDose ? ` · ${semisUnit}` : ''}`
+    : isSemis
+      ? hasCulture
+        ? `SEMIS · ${cultureName}${useDose ? ` · ${semisUnit}` : ''}`
+        : 'SEMIS'
+      : `${baseTitle}${useDose ? ' · kg/ha' : ''}`;
   const hasLabels = entries.some(e => e.label.length > 0);
 
   const statParts: string[] = [];
