@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   fetchRepositories,
   fetchToken,
@@ -182,8 +183,8 @@ export default function LoginModal({ onSuccess }: Props) {
             </>
           ) : (
             <>
-              <Text style={styles.cardTitle}>Choisir un contexte</Text>
-              <Text style={styles.repoSubtitle}>Sélectionnez votre dépôt de travail</Text>
+              <Text style={styles.cardTitle}>Choisir un projet</Text>
+              <Text style={styles.repoSubtitle}>Sélectionnez votre exploitation</Text>
               {!!error && (
                 <View style={[styles.errorRow, { marginBottom: 8 }]}>
                   <Ionicons name="alert-circle-outline" size={13} color="#D32F2F" />
@@ -197,7 +198,7 @@ export default function LoginModal({ onSuccess }: Props) {
                     style={({ pressed }) => [styles.repoItem, pressed && styles.repoItemPressed]}
                     onPress={() => { void handleSelectRepository(repo); }}
                     disabled={loading}>
-                    <Ionicons name="server-outline" size={18} color="#3A6B10" />
+                    <Text style={styles.repoEmoji}>🚜</Text>
                     <Text style={styles.repoName}>{repo.label}</Text>
                     {loading
                       ? <ActivityIndicator size="small" color="#3A6B10" />
@@ -288,6 +289,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E8F0DE',
   },
   repoItemPressed:  { backgroundColor: '#F0F7E8' },
+  repoEmoji:        { fontSize: 22, width: 28, textAlign: 'center' },
   repoName:         { flex: 1, fontSize: 14, color: '#2C4A1A', fontWeight: '500' },
   backBtn:          { marginTop: 14, alignItems: 'center' },
   backBtnText:      { fontSize: 13, color: '#7A9A5C', fontWeight: '600' },

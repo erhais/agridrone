@@ -1434,7 +1434,7 @@ export default function HomeScreen() {
           setQuery(text);
           setDropdownOpen(true);
         }}
-        onFocus={() => setDropdownOpen(true)}
+        onFocus={() => { setQuery(''); setDropdownOpen(true); }}
         onGpsPress={handleReset}
         filteredParcelles={filteredParcelles}
         dropdownOpen={dropdownOpen}
