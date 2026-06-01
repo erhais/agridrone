@@ -427,9 +427,7 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
     }
 
     let key: string | number;
-    if (element === 'Z') {
-      key = zone.num_zone ?? zone.id;
-    } else if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
+    if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
       key = p.id_class;
     } else if (!ENGRAIS_ELEMENTS.has(element) && p.id_type_sol != null) {
       key = `type_${p.id_type_sol}`;
