@@ -502,11 +502,7 @@ function MiniLegend({
   const SEMIS_GRAINS_IDS = new Set([3]);
   const isGrainCount = isSemis && cultureId != null && SEMIS_GRAINS_IDS.has(cultureId);
   const semisUnit = isGrainCount ? 'Nbre gr/ha' : 'kg/q';
-  const formatDose = (v: number): string => {
-    if (selectedElement === 'S') return isGrainCount ? String(Math.round(v)) : v.toFixed(2);
-    if (selectedElement === 'Z') return v.toFixed(2);
-    return String(v);
-  };
+  const formatDose = (v: number): string => String(Math.ceil(v));
   const useDose = (stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null))
     && (!isSemis || !!hasCulture);
   const baseTitle = ELEMENT_LABELS[selectedElement] ?? selectedElement;
@@ -553,31 +549,31 @@ function MiniLegend({
 
       {expanded && (
         <>
-          <View style={styles.legendRow}>
-            <View style={styles.legendSwatchSpacer} />
-            {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
-            {!isSemis && <Text style={styles.legendColHeader}>Teneur</Text>}
-            <Text style={styles.legendColHeader}>
-              {selectedElement === 'Z' ? 'Dose moy.' : isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose moy.'}
-            </Text>
-          </View>
           <View style={styles.legendDivider} />
           <ScrollView
             bounces={false}
             showsVerticalScrollIndicator={false}
             style={styles.legendScroll}>
             {entries.map(entry => (
-              <View key={String(entry.id)} style={styles.legendRow}>
-                <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
-                {hasLabels && <Text style={styles.legendLabel}>{entry.label}</Text>}
-                {!isSemis && (
-                  <Text style={styles.legendColValue}>
-                    {entry.teneur !== null ? String(entry.teneur) : '—'}
-                  </Text>
+              <View key={String(entry.id)} style={styles.legendEntry}>
+                {/* Ligne 1 : pastille + libellé */}
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
+                  <Text style={styles.legendLabel}>{entry.label || '—'}</Text>
+                </View>
+                {/* Ligne 2 : teneur et/ou dose */}
+                {(entry.teneur !== null || entry.dose !== null) && (
+                  <View style={styles.legendSubRow}>
+                    {!isSemis && entry.teneur !== null && (
+                      <Text style={styles.legendSubText}>Ten. {String(entry.teneur)}</Text>
+                    )}
+                    {entry.dose !== null && (
+                      <Text style={styles.legendSubText}>
+                        {`Dose moy. ${formatDose(entry.dose)}`}
+                      </Text>
+                    )}
+                  </View>
                 )}
-                <Text style={styles.legendColValue}>
-                  {entry.dose !== null ? formatDose(entry.dose) : '—'}
-                </Text>
               </View>
             ))}
           </ScrollView>
@@ -592,12 +588,12 @@ function MiniLegend({
               <View style={styles.legendDivider} />
               <Text style={styles.legendStatsBold}>
                 {selectedElement === 'Z'
-                  ? `À épandre : ${Math.round(totalDose as number)}`
+                  ? `À épandre : ${Math.ceil(totalDose as number)}`
                   : isSemis
                     ? (isGrainCount
-                        ? `À épandre : ${((totalDose as number) / 1_000_000).toFixed(2)} M gr/ha`
-                        : `À épandre : ${Math.round(totalDose as number)} kg`)
-                    : `À épandre : ${Math.round(totalDose as number)} kg`}
+                        ? `À épandre : ${Math.ceil((totalDose as number) / 1_000_000)} M gr`
+                        : `À épandre : ${Math.ceil(totalDose as number)} kg`)
+                    : `À épandre : ${Math.ceil(totalDose as number)} kg`}
               </Text>
             </>
           )}
@@ -2208,10 +2204,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     flex: 1,
   },
+  legendEntry: {
+    marginBottom: 7,
+  },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
     gap: 6,
   },
   legendSwatch: {
@@ -2224,26 +2222,21 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     fontSize: 11,
-    color: '#444',
+    color: '#333',
     flex: 1,
+  },
+  legendSubRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginLeft: 19,
+    marginTop: 2,
+  },
+  legendSubText: {
+    fontSize: 10,
+    color: '#777',
   },
   legendSwatchSpacer: {
     width: 13,
-    flexShrink: 0,
-  },
-  legendColHeader: {
-    width: 58,
-    fontSize: 10,
-    color: '#444',
-    textAlign: 'right',
-    fontWeight: '700',
-    flexShrink: 0,
-  },
-  legendColValue: {
-    width: 58,
-    fontSize: 10,
-    color: '#555',
-    textAlign: 'right',
     flexShrink: 0,
   },
   legendDivider: {
