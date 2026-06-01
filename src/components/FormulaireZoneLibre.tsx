@@ -206,6 +206,7 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   sheet: {
+    height: SHEET_H,
     backgroundColor: '#fff',
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,

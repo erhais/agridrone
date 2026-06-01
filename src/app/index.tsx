@@ -1379,7 +1379,7 @@ export default function HomeScreen() {
 
                 if (selectedElement === 'S' || selectedElement === 'Z') {
                   if (selectedElement === 'Z') {
-                    const numZone = zone.num_zone ?? (zi + 1);
+                    const numZone = zone.num_zone ?? Number(zone.id);
                     const fert = selectedElement;
                     setLoadingZones(true);
                     getZoneEngraisDetail(numZone, fert)
@@ -1696,7 +1696,7 @@ export default function HomeScreen() {
               features[selectedId]?.properties?.id ?? selectedId,
             );
             setLoadingZones(true);
-            getParcelleDetails(dbId, 'S')
+            getParcelleDetails(dbId, zoneLibreFertilisant)
               .then(detail => {
                 setZones(detail.zones);
                 setParcelleStats(detail.stats);
