@@ -52,6 +52,7 @@ import { loadToken } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
+import FormulaireZoneSemis from '../components/FormulaireZoneSemis';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import { type SemisFormResponse } from '../services/agridroneService';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
@@ -810,6 +811,7 @@ export default function HomeScreen() {
   const [lastFormulaireData, setLastFormulaireData] = useState<FormulaireData | null>(null);
   const [loadingFormulaire, setLoadingFormulaire] = useState(false);
   const [selectionCultureVisible, setSelectionCultureVisible] = useState(false);
+  const [selectionCultureContext, setSelectionCultureContext] = useState<'formulaire' | 'zone'>('formulaire');
   const [semisCultureDefinie, setSemisCultureDefinie] = useState<CultureSelection | null>(null);
   const [formulaireSemisVisible, setFormulaireSemisVisible] = useState(false);
   const [prelevements, setPrelevements] = useState<Prelevement[]>([]);
@@ -833,6 +835,7 @@ export default function HomeScreen() {
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [showEditHint, setShowEditHint] = useState(false);
   const [zoneFormVisible, setZoneFormVisible] = useState(false);
+  const [zoneSemisFormVisible, setZoneSemisFormVisible] = useState(false);
   const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
   const [zoneEngraisDetail, setZoneEngraisDetail] = useState<import('../services/agridroneService').EngraisZoneDetail | null>(null);
   const [zoneAllowDosage, setZoneAllowDosage] = useState(false);
@@ -1223,6 +1226,7 @@ export default function HomeScreen() {
             setSemisCultureDefinie(
               result ? { id: result.id_culture, nom: '' } : null,
             );
+            setSelectionCultureContext('formulaire');
             setSelectionCultureVisible(true);
           })
           .finally(() => setLoadingFormulaire(false));
@@ -1335,33 +1339,51 @@ export default function HomeScreen() {
             ? () => {
                 setSelectedZoneIdx(prev => prev === zi ? null : zi);
                 setSelectedZone(zone);
-                const numZone = zone.num_zone ?? (zi + 1);
-                const fert = selectedElement ?? 'P';
-                const sidx = selectedId ?? 0;
-                const dbId = parcelleDbId ?? Number(
-                  features[sidx]?.properties?.id_parcel ??
-                  features[sidx]?.properties?.id ??
-                  sidx,
-                );
-                setLoadingZones(true);
-                Promise.all([
-                  getZoneEngraisDetail(numZone, fert),
-                  getFormulaireEngrais(dbId, fert),
-                ])
-                  .then(([detail, formData]) => {
-                    setZoneEngraisDetail(detail);
-                    const dosage = formData?.dosage_manuel_zone
-                      ?? lastFormulaireData?.dosage_manuel_zone
-                      ?? false;
-                    const rend = formData?.rendement_specifique_zone
-                      ?? lastFormulaireData?.rendement_specifique_zone
-                      ?? false;
-                    console.log('[zone-auth] allowDosage:', dosage, '| allowRend:', rend, '| formData:', formData?.dosage_manuel_zone, formData?.rendement_specifique_zone);
-                    setZoneAllowDosage(dosage);
-                    setZoneAllowRendement(rend);
-                    setZoneFormVisible(true);
-                  })
-                  .finally(() => setLoadingZones(false));
+
+                if (selectedElement === 'S') {
+                  // Semis : vérifier si culture définie
+                  if (!semisCultureDefinie) {
+                    setSelectionCultureContext('zone');
+                    setSelectionCultureVisible(true);
+                  } else {
+                    const numZone = zone.num_zone ?? (zi + 1);
+                    setLoadingZones(true);
+                    getZoneEngraisDetail(numZone, 'S')
+                      .then(detail => {
+                        setZoneEngraisDetail(detail);
+                        setZoneSemisFormVisible(true);
+                      })
+                      .finally(() => setLoadingZones(false));
+                  }
+                } else {
+                  // Engrais (P/K/MG)
+                  const numZone = zone.num_zone ?? (zi + 1);
+                  const fert = selectedElement ?? 'P';
+                  const sidx = selectedId ?? 0;
+                  const dbId = parcelleDbId ?? Number(
+                    features[sidx]?.properties?.id_parcel ??
+                    features[sidx]?.properties?.id ??
+                    sidx,
+                  );
+                  setLoadingZones(true);
+                  Promise.all([
+                    getZoneEngraisDetail(numZone, fert),
+                    getFormulaireEngrais(dbId, fert),
+                  ])
+                    .then(([detail, formData]) => {
+                      setZoneEngraisDetail(detail);
+                      const dosage = formData?.dosage_manuel_zone
+                        ?? lastFormulaireData?.dosage_manuel_zone
+                        ?? false;
+                      const rend = formData?.rendement_specifique_zone
+                        ?? lastFormulaireData?.rendement_specifique_zone
+                        ?? false;
+                      setZoneAllowDosage(dosage);
+                      setZoneAllowRendement(rend);
+                      setZoneFormVisible(true);
+                    })
+                    .finally(() => setLoadingZones(false));
+                }
               }
             : undefined;
 
@@ -1599,6 +1621,46 @@ export default function HomeScreen() {
         />
       )}
 
+      {/* ── Formulaire zone semis ────────────────────────────────────── */}
+      {selectedZone !== null && semisCultureDefinie !== null && selectedId !== null && (
+        <FormulaireZoneSemis
+          visible={zoneSemisFormVisible}
+          zone={{
+            num_zone: selectedZone.num_zone ?? (zones.indexOf(selectedZone) + 1),
+            properties: {
+              ...( selectedZone.properties ?? {}),
+              dose_base:  zoneEngraisDetail?.dose_base  ?? selectedZone.properties?.dose,
+              tx_pierre:  zoneEngraisDetail?.tx_pierre  ?? selectedZone.properties?.tx_pierre,
+              dose:       zoneEngraisDetail?.dose       ?? selectedZone.properties?.dose,
+            },
+          }}
+          parcelle={{
+            id: parcelleDbId ?? Number(features[selectedId]?.properties?.id_parcel ?? selectedId),
+            nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
+          }}
+          culture={semisCultureDefinie}
+          allowDosageManuel={zoneEngraisDetail?.allow_dosage_manuel === 1}
+          onClose={() => setZoneSemisFormVisible(false)}
+          onSave={() => {
+            setZoneSemisFormVisible(false);
+            Alert.alert('Succès', 'Zone semis enregistrée ✅');
+            // Recharger les zones semis
+            const dbId = parcelleDbId ?? Number(
+              features[selectedId]?.properties?.id_parcel ??
+              features[selectedId]?.properties?.id ??
+              selectedId,
+            );
+            setLoadingZones(true);
+            getParcelleDetails(dbId, 'S')
+              .then(data => {
+                setZones(data.zones);
+                setParcelleStats(data.stats);
+              })
+              .finally(() => setLoadingZones(false));
+          }}
+        />
+      )}
+
       {/* ── Sélection culture semis ───────────────────────────────────── */}
       <SelectionCultureSemis
         visible={selectionCultureVisible}
@@ -1612,7 +1674,11 @@ export default function HomeScreen() {
         onSelect={culture => {
           setSemisCultureDefinie(culture);
           setSelectionCultureVisible(false);
-          setFormulaireSemisVisible(true);
+          if (selectionCultureContext === 'zone') {
+            setZoneSemisFormVisible(true);
+          } else {
+            setFormulaireSemisVisible(true);
+          }
         }}
       />
 

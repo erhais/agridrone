@@ -96,6 +96,7 @@ export interface ZoneDetailStyle {
 
 export interface ZoneDetailProperties {
   id_class?: number | null;
+  tx_pierre?: number | null;
   id_sol?: number | null;
   id_type_sol?: string | number | null;
   element?: string;
@@ -174,6 +175,49 @@ export interface EngraisZoneDetail {
   ph: number | null;
   dose: number | null;
   perso_dose: number | null;       // 0 ou 1
+  allow_dosage_manuel?: number | null;
+  tx_pierre?: number | null;
+  dose_base?: number | null;   // dose avant correction pierre
+}
+
+export interface PierreReferentielItem {
+  taux: number;   // seuil (0,5,10,15…)
+  coef: number;   // coefficient (%)
+}
+
+let _pierreCache: PierreReferentielItem[] | null = null;
+
+export async function getPierreReferentiel(): Promise<PierreReferentielItem[]> {
+  if (_pierreCache) return _pierreCache;
+  const data = await apiService.get<PierreReferentielItem[]>('/api/v1/referentiel/semis/pierre');
+  _pierreCache = data;
+  return data;
+}
+
+export function getPierreCoef(referentiel: PierreReferentielItem[], txPierre: number): number {
+  // Trouver le plus grand taux <= txPierre
+  let coef = 0;
+  for (const item of referentiel) {
+    if (item.taux <= txPierre) coef = item.coef;
+    else break;
+  }
+  return coef;
+}
+
+export interface ZoneSemisPatch {
+  tx_pierre: number;
+  dose?: number | null;
+  perso_dose: boolean;
+}
+
+export async function patchZoneSemis(
+  numZone: number,
+  data: ZoneSemisPatch,
+): Promise<unknown> {
+  return apiService.patch<unknown>(
+    `/api/v1/formulaires/zones/${numZone}?fertilisant=S`,
+    data,
+  );
 }
 
 export interface EngraisZonePatch {
