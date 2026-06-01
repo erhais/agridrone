@@ -34,11 +34,13 @@
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "expo-asset",
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     }
   }
 }
