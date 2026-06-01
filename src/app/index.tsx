@@ -540,7 +540,7 @@ function MiniLegend({
             {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
             {!isSemis && <Text style={styles.legendColHeader}>Teneur</Text>}
             <Text style={styles.legendColHeader}>
-              {isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose'}
+              {selectedElement === 'Z' ? 'Dose' : isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose'}
             </Text>
           </View>
           <View style={styles.legendDivider} />
@@ -573,11 +573,13 @@ function MiniLegend({
             <>
               <View style={styles.legendDivider} />
               <Text style={styles.legendStatsBold}>
-                {isSemis
-                  ? (isGrainCount
-                      ? `À épandre : ${(totalDose / 1_000_000).toFixed(2)} M gr/ha`
-                      : `À épandre : ${Math.round(totalDose)} kg`)
-                  : `À épandre : ${Math.round(totalDose)} kg`}
+                {selectedElement === 'Z'
+                  ? `À épandre : ${Math.round(totalDose as number)}`
+                  : isSemis
+                    ? (isGrainCount
+                        ? `À épandre : ${((totalDose as number) / 1_000_000).toFixed(2)} M gr/ha`
+                        : `À épandre : ${Math.round(totalDose as number)} kg`)
+                    : `À épandre : ${Math.round(totalDose as number)} kg`}
               </Text>
             </>
           )}
