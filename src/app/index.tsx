@@ -433,6 +433,8 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
       key = `type_${p.id_type_sol}`;
     } else if (p.id_sol != null) {
       key = `sol_${p.id_sol}`;
+    } else if (typeof p.label === 'string' && p.label.trim().length > 0) {
+      key = `label_${p.label.trim()}`;
     } else {
       key = fillColor;
     }
