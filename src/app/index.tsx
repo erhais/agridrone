@@ -960,6 +960,7 @@ export default function HomeScreen() {
     const feature = features[selectedId];
     const idParcel =
       feature.properties?.id_parcel ?? feature.properties?.id ?? feature.id;
+    console.log('[zone] selectedId:', selectedId, '| nom:', feature.properties?.nom_parcel, '| id_parcel:', feature.properties?.id_parcel, '| id:', feature.properties?.id, '| feature.id:', feature.id, '→ idParcel:', idParcel);
 
     if (idParcel == null) {
       setZones([]);
