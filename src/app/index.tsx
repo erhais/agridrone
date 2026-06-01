@@ -960,7 +960,7 @@ export default function HomeScreen() {
     const feature = features[selectedId];
     const idParcel =
       feature.properties?.id_parcel ?? feature.properties?.id ?? feature.id;
-    console.log('[zone] selectedId:', selectedId, '| nom:', feature.properties?.nom_parcel, '| id_parcel:', feature.properties?.id_parcel, '| id:', feature.properties?.id, '| feature.id:', feature.id, '→ idParcel:', idParcel);
+
 
     if (idParcel == null) {
       setZones([]);
@@ -1002,7 +1002,6 @@ export default function HomeScreen() {
   }, [selectedId, selectedElement, features, reloadTrigger]);
 
   const handleSelect = (index: number, nom: string) => {
-    console.log('[select] index:', index, '| nom:', nom, '| features[index].nom_parcel:', features[index]?.properties?.nom_parcel, '| id_parcel:', features[index]?.properties?.id_parcel, '| id:', features[index]?.properties?.id);
     Keyboard.dismiss();
     setSelectedId(index);
     setQuery(nom);
@@ -1364,7 +1363,7 @@ export default function HomeScreen() {
             fillColor: 'transparent',
             strokeColor: selected ? '#FFD700' : '#888888',
             strokeWidth: selected ? 3 : 1.5,
-            tappable: true,
+            tappable: selectedId === null,
             onPress: () => handleSelect(fi, nom),
           };
           if (feature.geometry?.type === 'Polygon') {
