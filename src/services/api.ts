@@ -13,7 +13,6 @@ export class ApiError extends Error {
 
 async function buildHeaders(): Promise<HeadersInit> {
   const token = await loadToken();
-  console.log('[api] Token envoyé:', token ? 'OUI' : 'NON');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return headers;
