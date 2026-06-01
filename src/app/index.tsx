@@ -430,9 +430,9 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
     if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
       key = p.id_class;
     } else if (!ENGRAIS_ELEMENTS.has(element)) {
-      // S et Z : regroupement par label uniquement
-      if (typeof p.label === 'string' && p.label.trim().length > 0) key = `label_${p.label.trim()}`;
-      else key = fillColor;
+      // S et Z : clé = label résolu (même logique que resolveLabel → cohérence garantie)
+      const resolvedLbl = resolveLabel(p, element);
+      key = resolvedLbl.length > 0 && resolvedLbl !== '—' ? `label_${resolvedLbl}` : fillColor;
     } else {
       key = fillColor;
     }
@@ -502,6 +502,11 @@ function MiniLegend({
   const SEMIS_GRAINS_IDS = new Set([3]);
   const isGrainCount = isSemis && cultureId != null && SEMIS_GRAINS_IDS.has(cultureId);
   const semisUnit = isGrainCount ? 'Nbre gr/ha' : 'kg/q';
+  const formatDose = (v: number): string => {
+    if (selectedElement === 'S') return isGrainCount ? String(Math.round(v)) : v.toFixed(2);
+    if (selectedElement === 'Z') return v.toFixed(2);
+    return String(v);
+  };
   const useDose = (stats ? stats.dose_moyenne !== null : entries.some(e => e.dose !== null))
     && (!isSemis || !!hasCulture);
   const baseTitle = ELEMENT_LABELS[selectedElement] ?? selectedElement;
@@ -553,7 +558,7 @@ function MiniLegend({
             {hasLabels && <Text style={[styles.legendLabel, styles.legendColHeader]} />}
             {!isSemis && <Text style={styles.legendColHeader}>Teneur</Text>}
             <Text style={styles.legendColHeader}>
-              {selectedElement === 'Z' ? 'Dose' : isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose'}
+              {selectedElement === 'Z' ? 'Dose moy.' : isSemis ? (isGrainCount ? 'Gr/ha' : 'kg/q') : 'Dose moy.'}
             </Text>
           </View>
           <View style={styles.legendDivider} />
@@ -571,7 +576,7 @@ function MiniLegend({
                   </Text>
                 )}
                 <Text style={styles.legendColValue}>
-                  {entry.dose !== null ? String(entry.dose) : '—'}
+                  {entry.dose !== null ? formatDose(entry.dose) : '—'}
                 </Text>
               </View>
             ))}
@@ -2055,7 +2060,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 16,
+    minHeight: 48,
   },
   accTitle: {
     fontSize: 12,
@@ -2218,7 +2224,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   legendColHeader: {
-    width: 40,
+    width: 58,
     fontSize: 10,
     color: '#444',
     textAlign: 'right',
@@ -2226,7 +2232,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   legendColValue: {
-    width: 40,
+    width: 58,
     fontSize: 10,
     color: '#555',
     textAlign: 'right',
