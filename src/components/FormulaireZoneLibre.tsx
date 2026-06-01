@@ -43,12 +43,11 @@ interface Props {
 }
 
 const FERTILISANT_LABELS: Record<string, string> = {
-  SL: 'Zonage libre',
-  Z:  'Zonage',
+  Z: 'Zonage libre',
 };
 
 export default function FormulaireZoneLibre({
-  visible, zone, parcelle, fertilisant = 'SL', onClose, onSave,
+  visible, zone, parcelle, fertilisant = 'Z', onClose, onSave,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(SHEET_H)).current;
   const panY      = useRef(new Animated.Value(0)).current;

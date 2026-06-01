@@ -352,7 +352,7 @@ const ELEMENT_LABELS: Record<string, string> = {
   K:  'POTASSIUM',
   MG: 'MAGNÉSIE',
   S:  'SEMIS',
-  SL: 'SEMIS LIBRE',
+  Z:  'ZONAGE LIBRE',
 };
 
 interface LegendEntry {
@@ -480,7 +480,7 @@ function MiniLegend({
   if (zones.length === 0 || selectedElement === null) return null;
 
   const entries = buildLegendEntries(zones, selectedElement);
-  const isSemis = selectedElement === 'S' || selectedElement === 'SL';
+  const isSemis = selectedElement === 'S' || selectedElement === 'Z';
   const hasCulture = isSemis && cultureName && cultureName.length > 0;
   // Betterave (id=3) : graines/ha — toutes les autres céréales : kg/q
   const SEMIS_GRAINS_IDS = new Set([3]);
@@ -733,12 +733,12 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
             onToggle={() => {
               const opening = !acc.semis;
               toggleAcc('semis');
-              if (!opening && (selectedElement === 'S' || selectedElement === 'SL')) onSelectElement(null);
+              if (!opening && (selectedElement === 'S' || selectedElement === 'Z')) onSelectElement(null);
             }}>
             <View style={styles.pillsRow}>
               {[
                 { code: 'S',  label: 'semis conseillé' },
-                { code: 'SL', label: 'zonage libre' },
+                { code: 'Z', label: 'zonage libre' },
               ].map(({ code, label }) => {
                 const active = selectedElement === code;
                 return (
@@ -844,7 +844,7 @@ export default function HomeScreen() {
   const [zoneFormVisible, setZoneFormVisible] = useState(false);
   const [zoneSemisFormVisible, setZoneSemisFormVisible] = useState(false);
   const [zoneLibreFormVisible, setZoneLibreFormVisible] = useState(false);
-  const [zoneLibreFertilisant, setZoneLibreFertilisant] = useState('SL');
+  const [zoneLibreFertilisant, setZoneLibreFertilisant] = useState('Z');
   const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
   const [zoneEngraisDetail, setZoneEngraisDetail] = useState<import('../services/agridroneService').EngraisZoneDetail | null>(null);
   const [zoneAllowDosage, setZoneAllowDosage] = useState(false);
@@ -956,7 +956,7 @@ export default function HomeScreen() {
     }
 
     // SL (zonage libre) utilise la même couche de zones que S
-    const elementForApi = selectedElement === 'SL' ? 'S' : selectedElement;
+    const elementForApi = selectedElement === 'Z' ? 'S' : selectedElement;
     getParcelleDetails(idParcel, elementForApi)
       .then(data => {
         if (!cancelled) {
@@ -1376,8 +1376,8 @@ export default function HomeScreen() {
                 setSelectedZoneIdx(prev => prev === zi ? null : zi);
                 setSelectedZone(zone);
 
-                if (selectedElement === 'S' || selectedElement === 'SL' || selectedElement === 'Z') {
-                  if (selectedElement === 'SL' || selectedElement === 'Z') {
+                if (selectedElement === 'S' || selectedElement === 'Z') {
+                  if (selectedElement === 'Z') {
                     const numZone = zone.num_zone ?? (zi + 1);
                     const fert = selectedElement;
                     setLoadingZones(true);
@@ -1558,7 +1558,7 @@ export default function HomeScreen() {
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
             ...(zones.length > 0 ? ['doses', 'attributs'] : []),
-            ...(selectedElement !== 'SL' ? ['formulaire'] : []),
+            ...(selectedElement !== 'Z' ? ['formulaire'] : []),
           ]}
         />
       </Animated.View>
@@ -1669,7 +1669,7 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* ── Formulaire zone libre (SL) ───────────────────────────────── */}
+      {/* ── Formulaire zone libre (Z) ────────────────────────────────── */}
       {selectedZone !== null && selectedId !== null && (
         <FormulaireZoneLibre
           visible={zoneLibreFormVisible}
