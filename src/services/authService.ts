@@ -144,6 +144,7 @@ export async function clearSession(): Promise<void> {
     SecureStore.deleteItemAsync(KEY_LOGIN),
     SecureStore.deleteItemAsync(KEY_PASSWORD),
     SecureStore.deleteItemAsync(KEY_REPOSITORY),
+    SecureStore.deleteItemAsync(KEY_CREDS_EXPIRY),
   ]);
 }
 

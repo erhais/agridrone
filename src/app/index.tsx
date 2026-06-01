@@ -887,6 +887,7 @@ export default function HomeScreen() {
   const [collapseSignal, setCollapseSignal] = useState(0);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     setLoadingParcelles(true);
     getParcelles()
       .then(data => {
@@ -907,7 +908,7 @@ export default function HomeScreen() {
         );
       })
       .finally(() => setLoadingParcelles(false));
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     Animated.timing(iconBarOpacity, {
