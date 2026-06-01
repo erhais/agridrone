@@ -1002,6 +1002,7 @@ export default function HomeScreen() {
   }, [selectedId, selectedElement, features, reloadTrigger]);
 
   const handleSelect = (index: number, nom: string) => {
+    console.log('[select] index:', index, '| nom:', nom, '| features[index].nom_parcel:', features[index]?.properties?.nom_parcel, '| id_parcel:', features[index]?.properties?.id_parcel, '| id:', features[index]?.properties?.id);
     Keyboard.dismiss();
     setSelectedId(index);
     setQuery(nom);
