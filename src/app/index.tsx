@@ -12,7 +12,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -818,7 +818,9 @@ export default function HomeScreen() {
   const [showPrelevements, setShowPrelevements] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
   const [showDoseLabels, setShowDoseLabels] = useState(false);
-  const [doseLabelTracksView, setDoseLabelTracksView] = useState(true);
+  const [labelPositions, setLabelPositions] = useState<
+    Array<{ key: string; x: number; y: number; doseStr: string }>
+  >([]);
   const [editZoneMode, setEditZoneMode] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [mapLatDelta, setMapLatDelta] = useState(10);
@@ -906,26 +908,6 @@ export default function HomeScreen() {
     ]).start();
   }, [isGeolocating]);
 
-  // Passe tracksViewChanges à false après le rendu initial des étiquettes
-  // pour éviter le recalcul de bounding box Android au toggle
-  useEffect(() => {
-    if (showDoseLabels) {
-      setDoseLabelTracksView(true);
-      const t = setTimeout(() => setDoseLabelTracksView(false), 600);
-      return () => clearTimeout(t);
-    } else {
-      setDoseLabelTracksView(true);
-    }
-  }, [showDoseLabels]);
-
-  // Redéclenche le cycle tracksViewChanges quand les zones changent
-  // avec les étiquettes actives (changement d'élément)
-  useEffect(() => {
-    if (!showDoseLabels || zones.length === 0) return;
-    setDoseLabelTracksView(true);
-    const t = setTimeout(() => setDoseLabelTracksView(false), 600);
-    return () => clearTimeout(t);
-  }, [zones]);
 
   const filteredParcelles = features
     .map((f, i) => ({ index: i, nom: f.properties?.nom_parcel ?? 'Sans nom' }))
@@ -1021,6 +1003,50 @@ export default function HomeScreen() {
       mapRef.current?.animateToRegion(region, 600);
     }
   };
+
+  const updateLabelPositions = useCallback(async () => {
+    if (!mapRef.current || zones.length === 0) {
+      setLabelPositions([]);
+      return;
+    }
+    if (!showDoseLabels) return; // garder les positions en cache, ne pas recalculer
+    const { height: screenH } = Dimensions.get('window');
+    const threshold = mapLatDelta * (60 / screenH);
+    const placed: { lat: number; lng: number }[] = [];
+    const toProcess: Array<{ zi: number; lat: number; lng: number; doseStr: string }> = [];
+
+    zones.forEach((zone, zi) => {
+      const dose = zone.properties?.dose;
+      const c = zone.centroid;
+      if (!c || dose == null || (dose as number) < 0) return;
+      const tooClose = placed.some(p =>
+        Math.abs(p.lat - c.lat) < threshold && Math.abs(p.lng - c.lng) < threshold * 1.5,
+      );
+      if (tooClose) return;
+      placed.push({ lat: c.lat, lng: c.lng });
+      const v = Number(dose);
+      toProcess.push({
+        zi,
+        lat: c.lat,
+        lng: c.lng,
+        doseStr: v >= 10 ? Math.round(v).toString() : v.toFixed(2),
+      });
+    });
+
+    if (toProcess.length === 0) { setLabelPositions([]); return; }
+
+    const results = await Promise.all(
+      toProcess.map(item =>
+        mapRef.current!
+          .pointForCoordinate({ latitude: item.lat, longitude: item.lng })
+          .then(pt => ({ key: `dose-${item.zi}`, x: pt.x, y: pt.y, doseStr: item.doseStr }))
+          .catch(() => null),
+      ),
+    );
+    setLabelPositions(results.filter(Boolean) as typeof labelPositions);
+  }, [showDoseLabels, zones, mapLatDelta]);
+
+  useEffect(() => { void updateLabelPositions(); }, [showDoseLabels, zones, mapLatDelta]);
 
   const centerOnParcelle = () => {
     if (selectedId === null) return;
@@ -1290,7 +1316,8 @@ export default function HomeScreen() {
         provider={PROVIDER_DEFAULT}
         initialRegion={DEFAULT_REGION}
         mapType="none"
-        onRegionChange={r => setMapLatDelta(r.latitudeDelta)}>
+        onRegionChange={r => setMapLatDelta(r.latitudeDelta)}
+        onRegionChangeComplete={() => { void updateLabelPositions(); }}>
         <UrlTile urlTemplate={IGN_ORTHO_URL} maximumZ={19} zIndex={-1} />
         {features.flatMap((feature, fi) => {
           const nom = feature.properties?.nom_parcel ?? 'Sans nom';
@@ -1458,36 +1485,17 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* ── Étiquettes doses (déduplication anti-chevauchement) ──────── */}
-        {showDoseLabels && (() => {
-          const { height: screenH } = Dimensions.get('window');
-          // Seuil en degrés : ~60px en coordonnées carte
-          const threshold = mapLatDelta * (60 / screenH);
-          const placed: { lat: number; lng: number }[] = [];
-          return zones.map((zone, zi) => {
-            const dose = zone.properties?.dose;
-            const c = zone.centroid;
-            if (!c || dose == null || (dose as number) < 0) return null;
-            // Vérifier si trop proche d'une étiquette déjà placée
-            const tooClose = placed.some(p =>
-              Math.abs(p.lat - c.lat) < threshold &&
-              Math.abs(p.lng - c.lng) < threshold * 1.5,
-            );
-            if (tooClose) return null;
-            placed.push({ lat: c.lat, lng: c.lng });
-            const v = Number(dose);
-            const doseStr = v >= 10 ? Math.round(v).toString() : v.toFixed(2);
-            return (
-              <Marker
-                key={`dose-label-${zi}`}
-                coordinate={{ latitude: c.lat, longitude: c.lng }}
-                tracksViewChanges={doseLabelTracksView}>
-                <Text style={styles.doseLabelText} allowFontScaling={false}>{doseStr}</Text>
-              </Marker>
-            );
-          });
-        })()}
       </MapView>
+
+      {/* ── Étiquettes doses — overlay React Native (hors MapView) ─────── */}
+      {showDoseLabels && labelPositions.map(pos => (
+        <View
+          key={pos.key}
+          style={[styles.doseLabelOverlay, { left: pos.x, top: pos.y }]}
+          pointerEvents="none">
+          <Text style={styles.doseLabelText}>{pos.doseStr}</Text>
+        </View>
+      ))}
 
       {/* ── Overlay fermeture dropdown au clic sur la carte ───────────── */}
       {dropdownOpen && (
@@ -1616,6 +1624,27 @@ export default function HomeScreen() {
               });
             }
             setZoneFormVisible(false);
+            setSelectedZoneIdx(null);
+            // Recharger les zones → recalcul total légende + étiquettes doses
+            const dbId = parcelleDbId ?? Number(
+              features[selectedId!]?.properties?.id_parcel ??
+              features[selectedId!]?.properties?.id ??
+              selectedId,
+            );
+            setLoadingZones(true);
+            getParcelleDetails(dbId, selectedElement ?? 'P')
+              .then(detail => {
+                setZones(detail.zones);
+                setParcelleStats(detail.stats);
+                setPrelevements(detail['prélevements'] ?? []);
+                setLegendExpanded(true);
+                const hasDoses = detail.zones.some(
+                  z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
+                );
+                if (hasDoses) setShowDoseLabels(true);
+              })
+              .catch(() => {})
+              .finally(() => setLoadingZones(false));
             Alert.alert('Succès', 'Zone enregistrée ✅');
           }}
         />
@@ -1643,6 +1672,7 @@ export default function HomeScreen() {
           onClose={() => setZoneSemisFormVisible(false)}
           onSave={() => {
             setZoneSemisFormVisible(false);
+            setSelectedZoneIdx(null);
             Alert.alert('Succès', 'Zone semis enregistrée ✅');
             // Recharger les zones semis
             const dbId = parcelleDbId ?? Number(
@@ -2148,13 +2178,20 @@ const styles = StyleSheet.create({
   },
 
   // ── Marqueurs prélèvements ─────────────────────────────────────────────────
+  doseLabelOverlay: {
+    position: 'absolute',
+    zIndex: 90,
+    transform: [{ translateX: -35 }, { translateY: -12 }],
+  },
   doseLabelText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111111',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingVertical: 4,
-    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
   markerWrapper: {
     width: 50,

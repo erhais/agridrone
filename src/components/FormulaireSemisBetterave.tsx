@@ -61,7 +61,6 @@ export interface SemisBetteraveData {
   annee_recolte: number;
   id_semis_condition_sol: number;
   allow_dosage_manuel: boolean;
-  commentaire: string | null;
 }
 
 interface Props {
@@ -94,7 +93,6 @@ export default function FormulaireSemisBetterave({
   const [anneeRecolte,     setAnneeRecolte]     = useState(String(new Date().getFullYear()));
   const [idConditionSol,   setIdConditionSol]   = useState(0);
   const [dosageManuel,     setDosageManuel]     = useState(false);
-  const [commentaire,      setCommentaire]      = useState('');
   const [errors,           setErrors]           = useState<Record<string, string>>({});
 
   // Chargement conditions + defaults
@@ -112,7 +110,6 @@ export default function FormulaireSemisBetterave({
           setAnneeRecolte(String(defaults.annee_recolte));
           setIdConditionSol(defaults.id_semis_condition_sol);
           setDosageManuel(defaults.allow_dosage_manuel);
-          setCommentaire(defaults.commentaire ?? '');
         } else if (conds.length > 0) {
           setIdConditionSol(conds[0].id);
         }
@@ -178,7 +175,6 @@ export default function FormulaireSemisBetterave({
       annee_recolte: parseInt(anneeRecolte, 10),
       id_semis_condition_sol: idConditionSol,
       allow_dosage_manuel: dosageManuel,
-      commentaire: commentaire.trim() || null,
     };
     try {
       const result = formId
@@ -293,19 +289,6 @@ export default function FormulaireSemisBetterave({
             </View>
 
             {/* Commentaire */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Commentaire</Text>
-              <TextInput
-                style={styles.textArea}
-                value={commentaire}
-                onChangeText={setCommentaire}
-                placeholder="Commentaire (optionnel)"
-                placeholderTextColor="#BDBDBD"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
 
           </ScrollView>
         </KeyboardAvoidingView>

@@ -213,9 +213,11 @@ export default function FormulaireZoneSemis({
   const handleSave = async () => {
     setSaving(true);
     try {
+      // tx_pierre toujours envoyé → BO recalcule la dose
+      // dose uniquement si perso_dose coché → BO utilise la valeur fournie
       await patchZoneSemis(zone.num_zone, {
         tx_pierre: txPierre,
-        dose: persoDose ? (parseFloat(dose) || 0) : null,
+        ...(persoDose ? { dose: parseFloat(dose) || 0 } : {}),
         perso_dose: persoDose,
       });
       close();
