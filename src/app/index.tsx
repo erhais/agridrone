@@ -53,6 +53,7 @@ import SelectionCultureSemis, { type CultureSelection } from '../components/Sele
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
 import FormulaireZoneSemis from '../components/FormulaireZoneSemis';
+import FormulaireZoneLibre from '../components/FormulaireZoneLibre';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import { type SemisFormResponse } from '../services/agridroneService';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
@@ -351,6 +352,7 @@ const ELEMENT_LABELS: Record<string, string> = {
   K:  'POTASSIUM',
   MG: 'MAGNÉSIE',
   S:  'SEMIS',
+  SL: 'SEMIS LIBRE',
 };
 
 interface LegendEntry {
@@ -478,7 +480,7 @@ function MiniLegend({
   if (zones.length === 0 || selectedElement === null) return null;
 
   const entries = buildLegendEntries(zones, selectedElement);
-  const isSemis = selectedElement === 'S';
+  const isSemis = selectedElement === 'S' || selectedElement === 'SL';
   const hasCulture = isSemis && cultureName && cultureName.length > 0;
   // Betterave (id=3) : graines/ha — toutes les autres céréales : kg/q
   const SEMIS_GRAINS_IDS = new Set([3]);
@@ -731,26 +733,29 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
             onToggle={() => {
               const opening = !acc.semis;
               toggleAcc('semis');
-              if (opening) onSelectElement('S');
-              else if (selectedElement === 'S') onSelectElement(null);
+              if (!opening && (selectedElement === 'S' || selectedElement === 'SL')) onSelectElement(null);
             }}>
             <View style={styles.pillsRow}>
-              {(() => {
-                const active = selectedElement === 'S';
+              {[
+                { code: 'S',  label: 'semis conseillé' },
+                { code: 'SL', label: 'zonage libre' },
+              ].map(({ code, label }) => {
+                const active = selectedElement === code;
                 return (
                   <Pressable
-                    onPress={() => handlePill('S')}
+                    key={code}
+                    onPress={() => handlePill(code)}
                     style={({ pressed }) => [
                       styles.pill,
                       active && styles.pillActive,
                       pressed && { opacity: 0.7 },
                     ]}>
                     <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      semis
+                      {label}
                     </Text>
                   </Pressable>
                 );
-              })()}
+              })}
             </View>
           </AccordionSection>
 
@@ -838,6 +843,8 @@ export default function HomeScreen() {
   const [showEditHint, setShowEditHint] = useState(false);
   const [zoneFormVisible, setZoneFormVisible] = useState(false);
   const [zoneSemisFormVisible, setZoneSemisFormVisible] = useState(false);
+  const [zoneLibreFormVisible, setZoneLibreFormVisible] = useState(false);
+  const [zoneLibreFertilisant, setZoneLibreFertilisant] = useState('SL');
   const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
   const [zoneEngraisDetail, setZoneEngraisDetail] = useState<import('../services/agridroneService').EngraisZoneDetail | null>(null);
   const [zoneAllowDosage, setZoneAllowDosage] = useState(false);
@@ -948,7 +955,9 @@ export default function HomeScreen() {
         .catch(() => {});
     }
 
-    getParcelleDetails(idParcel, selectedElement)
+    // SL (zonage libre) utilise la même couche de zones que S
+    const elementForApi = selectedElement === 'SL' ? 'S' : selectedElement;
+    getParcelleDetails(idParcel, elementForApi)
       .then(data => {
         if (!cancelled) {
           setZones(data.zones);
@@ -1367,9 +1376,19 @@ export default function HomeScreen() {
                 setSelectedZoneIdx(prev => prev === zi ? null : zi);
                 setSelectedZone(zone);
 
-                if (selectedElement === 'S') {
-                  // Semis : vérifier si culture définie
-                  if (!semisCultureDefinie) {
+                if (selectedElement === 'S' || selectedElement === 'SL' || selectedElement === 'Z') {
+                  if (selectedElement === 'SL' || selectedElement === 'Z') {
+                    const numZone = zone.num_zone ?? (zi + 1);
+                    const fert = selectedElement;
+                    setLoadingZones(true);
+                    getZoneEngraisDetail(numZone, fert)
+                      .then(detail => {
+                        setZoneEngraisDetail(detail);
+                        setZoneLibreFertilisant(fert);
+                        setZoneLibreFormVisible(true);
+                      })
+                      .finally(() => setLoadingZones(false));
+                  } else if (!semisCultureDefinie) {
                     setSelectionCultureContext('zone');
                     setSelectionCultureVisible(true);
                   } else {
@@ -1539,7 +1558,7 @@ export default function HomeScreen() {
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
             ...(zones.length > 0 ? ['doses', 'attributs'] : []),
-            'formulaire',
+            ...(selectedElement !== 'SL' ? ['formulaire'] : []),
           ]}
         />
       </Animated.View>
@@ -1608,7 +1627,7 @@ export default function HomeScreen() {
           initialDetail={zoneEngraisDetail}
           allowDosageManuel={zoneAllowDosage}
           allowRendementSpec={zoneAllowRendement}
-          onClose={() => setZoneFormVisible(false)}
+          onClose={() => { setZoneFormVisible(false); setSelectedZoneIdx(null); }}
           onRecopie={() => {
             setZoneFormVisible(false);
             Alert.alert('Recopie', 'Fonctionnalité à implémenter');
@@ -1650,6 +1669,45 @@ export default function HomeScreen() {
         />
       )}
 
+      {/* ── Formulaire zone libre (SL) ───────────────────────────────── */}
+      {selectedZone !== null && selectedId !== null && (
+        <FormulaireZoneLibre
+          visible={zoneLibreFormVisible}
+          zone={{
+            num_zone: selectedZone.num_zone ?? (zones.indexOf(selectedZone) + 1),
+            properties: {
+              ...(selectedZone.properties ?? {}),
+              dose: zoneEngraisDetail?.dose ?? selectedZone.properties?.dose,
+            },
+            style: selectedZone.style ? { fillColor: selectedZone.style.fillColor } : undefined,
+          }}
+          parcelle={{
+            id: parcelleDbId ?? Number(features[selectedId]?.properties?.id_parcel ?? selectedId),
+            nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
+          }}
+          fertilisant={zoneLibreFertilisant}
+          onClose={() => { setZoneLibreFormVisible(false); setSelectedZoneIdx(null); }}
+          onSave={() => {
+            setZoneLibreFormVisible(false);
+            setSelectedZoneIdx(null);
+            const dbId = parcelleDbId ?? Number(
+              features[selectedId]?.properties?.id_parcel ??
+              features[selectedId]?.properties?.id ?? selectedId,
+            );
+            setLoadingZones(true);
+            getParcelleDetails(dbId, 'S')
+              .then(detail => {
+                setZones(detail.zones);
+                setParcelleStats(detail.stats);
+                setLegendExpanded(true);
+              })
+              .catch(() => {})
+              .finally(() => setLoadingZones(false));
+            Alert.alert('Succès', 'Zone enregistrée ✅');
+          }}
+        />
+      )}
+
       {/* ── Formulaire zone semis ────────────────────────────────────── */}
       {selectedZone !== null && semisCultureDefinie !== null && selectedId !== null && (
         <FormulaireZoneSemis
@@ -1669,7 +1727,7 @@ export default function HomeScreen() {
           }}
           culture={semisCultureDefinie}
           allowDosageManuel={zoneEngraisDetail?.allow_dosage_manuel === 1}
-          onClose={() => setZoneSemisFormVisible(false)}
+          onClose={() => { setZoneSemisFormVisible(false); setSelectedZoneIdx(null); }}
           onSave={() => {
             setZoneSemisFormVisible(false);
             setSelectedZoneIdx(null);

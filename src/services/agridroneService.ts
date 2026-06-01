@@ -213,9 +213,10 @@ export interface ZoneSemisPatch {
 export async function patchZoneSemis(
   numZone: number,
   data: ZoneSemisPatch,
+  fertilisant = 'S',
 ): Promise<unknown> {
   return apiService.patch<unknown>(
-    `/api/v1/formulaires/zones/${numZone}?fertilisant=S`,
+    `/api/v1/formulaires/zones/${numZone}?fertilisant=${encodeURIComponent(fertilisant)}`,
     data,
   );
 }
