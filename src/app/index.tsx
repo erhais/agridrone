@@ -892,9 +892,18 @@ export default function HomeScreen() {
       const t = setTimeout(() => setDoseLabelTracksView(false), 600);
       return () => clearTimeout(t);
     } else {
-      setDoseLabelTracksView(true); // reset pour la prochaine affichage
+      setDoseLabelTracksView(true);
     }
   }, [showDoseLabels]);
+
+  // Redéclenche le cycle tracksViewChanges quand les zones changent
+  // avec les étiquettes actives (changement d'élément)
+  useEffect(() => {
+    if (!showDoseLabels || zones.length === 0) return;
+    setDoseLabelTracksView(true);
+    const t = setTimeout(() => setDoseLabelTracksView(false), 600);
+    return () => clearTimeout(t);
+  }, [zones]);
 
   const filteredParcelles = features
     .map((f, i) => ({ index: i, nom: f.properties?.nom_parcel ?? 'Sans nom' }))
