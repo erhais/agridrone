@@ -429,17 +429,10 @@ function buildLegendEntries(zones: ZoneDetail[], element: string): LegendEntry[]
     let key: string | number;
     if (ENGRAIS_ELEMENTS.has(element) && p.id_class != null && p.id_class > 0) {
       key = p.id_class;
-    } else if (element === 'Z') {
-      // Zonage libre : regroupement par type de sol (label), pas par id_sol individuel
-      if (p.id_type_sol != null) key = `type_${p.id_type_sol}`;
-      else if (typeof p.label === 'string' && p.label.trim().length > 0) key = `label_${p.label.trim()}`;
+    } else if (!ENGRAIS_ELEMENTS.has(element)) {
+      // S et Z : regroupement par label uniquement
+      if (typeof p.label === 'string' && p.label.trim().length > 0) key = `label_${p.label.trim()}`;
       else key = fillColor;
-    } else if (!ENGRAIS_ELEMENTS.has(element) && p.id_type_sol != null) {
-      key = `type_${p.id_type_sol}`;
-    } else if (p.id_sol != null) {
-      key = `sol_${p.id_sol}`;
-    } else if (typeof p.label === 'string' && p.label.trim().length > 0) {
-      key = `label_${p.label.trim()}`;
     } else {
       key = fillColor;
     }
