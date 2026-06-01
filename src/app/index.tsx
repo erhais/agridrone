@@ -554,15 +554,17 @@ function MiniLegend({
       <Pressable style={styles.legendTitleRow} onPress={handleTitlePress}>
         <Text style={[styles.miniLegendTitle, legendLarge && { fontSize: 13 }]}>{title}</Text>
         <View style={styles.legendHeaderBtns}>
-          <MaterialCommunityIcons
-            name={legendLarge ? 'magnify-minus-outline' : 'magnify-plus-outline'}
-            size={16}
-            color="#546E7A"
-          />
+          <View style={styles.legendMagnifyBtn}>
+            <MaterialCommunityIcons
+              name={legendLarge ? 'magnify-minus-outline' : 'magnify-plus-outline'}
+              size={20}
+              color="#546E7A"
+            />
+          </View>
           <View style={styles.legendToggleBtn}>
             <Ionicons
               name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={16}
+              size={20}
               color="#fff"
             />
           </View>
@@ -2222,12 +2224,22 @@ const styles = StyleSheet.create({
   legendHeaderBtns: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
+  },
+  legendMagnifyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(84,110,122,0.15)',
+    borderWidth: 1,
+    borderColor: '#546E7A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   legendToggleBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#546E7A',
     alignItems: 'center',
     justifyContent: 'center',
