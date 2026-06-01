@@ -42,6 +42,7 @@ export default function LoginModal({ onSuccess }: Props) {
   const [showPwd,      setShowPwd]      = useState(false);
   const [rememberMe,   setRememberMe]   = useState(true);
   const [repositories, setRepositories] = useState<AuthRepository[]>([]);
+  const [repoSearch,   setRepoSearch]   = useState('');
   const [error,        setError]        = useState('');
   const [loading,      setLoading]      = useState(false);
 
@@ -191,25 +192,46 @@ export default function LoginModal({ onSuccess }: Props) {
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
-              <ScrollView style={styles.repoList} bounces={false} showsVerticalScrollIndicator={false}>
-                {repositories.map(repo => (
-                  <Pressable
-                    key={repo.cle}
-                    style={({ pressed }) => [styles.repoItem, pressed && styles.repoItemPressed]}
-                    onPress={() => { void handleSelectRepository(repo); }}
-                    disabled={loading}>
-                    <Text style={styles.repoEmoji}>🚜</Text>
-                    <Text style={styles.repoName}>{repo.label}</Text>
-                    {loading
-                      ? <ActivityIndicator size="small" color="#3A6B10" />
-                      : <Ionicons name="chevron-forward" size={16} color="#BDBDBD" />
-                    }
-                  </Pressable>
-                ))}
+              {repositories.length > 3 && (
+                <View style={styles.repoSearchBox}>
+                  <Ionicons name="search-outline" size={14} color="#9E9E9E" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={styles.repoSearchInput}
+                    placeholder="Rechercher un projet…"
+                    placeholderTextColor="#BDBDBD"
+                    value={repoSearch}
+                    onChangeText={setRepoSearch}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    clearButtonMode="while-editing"
+                  />
+                </View>
+              )}
+              <ScrollView
+                style={[styles.repoList, repositories.length > 3 && styles.repoListTall]}
+                bounces={false}
+                showsVerticalScrollIndicator={repositories.length > 5}>
+                {repositories
+                  .filter(r => repoSearch.trim() === '' ||
+                    r.label.toLowerCase().includes(repoSearch.trim().toLowerCase()))
+                  .map(repo => (
+                    <Pressable
+                      key={repo.cle}
+                      style={({ pressed }) => [styles.repoItem, pressed && styles.repoItemPressed]}
+                      onPress={() => { void handleSelectRepository(repo); }}
+                      disabled={loading}>
+                      <Text style={styles.repoEmoji}>🚜</Text>
+                      <Text style={styles.repoName}>{repo.label}</Text>
+                      {loading
+                        ? <ActivityIndicator size="small" color="#3A6B10" />
+                        : <Ionicons name="chevron-forward" size={16} color="#BDBDBD" />
+                      }
+                    </Pressable>
+                  ))}
               </ScrollView>
               <Pressable
                 style={styles.backBtn}
-                onPress={() => { setStep('credentials'); setError(''); }}
+                onPress={() => { setStep('credentials'); setError(''); setRepoSearch(''); }}
                 disabled={loading}>
                 <Text style={styles.backBtnText}>← Retour</Text>
               </Pressable>
@@ -281,8 +303,16 @@ const styles = StyleSheet.create({
   },
   loginBtnText: { fontSize: 15, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
 
-  repoSubtitle:     { fontSize: 12, color: '#666', marginBottom: 12 },
-  repoList:         { maxHeight: 220 },
+  repoSubtitle:     { fontSize: 12, color: '#666', marginBottom: 10 },
+  repoSearchBox: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#D0E4BE', borderRadius: 8,
+    backgroundColor: '#F7FBF2', paddingHorizontal: 10, height: 38,
+    marginBottom: 10,
+  },
+  repoSearchInput: { flex: 1, fontSize: 13, color: '#333' },
+  repoList:        { maxHeight: 220 },
+  repoListTall:    { maxHeight: 320 },
   repoItem:         {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 13, paddingHorizontal: 4,
