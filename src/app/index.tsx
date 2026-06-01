@@ -492,9 +492,24 @@ function MiniLegend({
   cultureName?: string | null;
   cultureId?: number | null;
 }) {
+  const [legendLarge, setLegendLarge] = useState(false);
+  const lastTapRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTitlePress = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      setLegendLarge(v => !v);
+    } else {
+      tapTimerRef.current = setTimeout(() => onToggle(), 280);
+    }
+    lastTapRef.current = now;
+  };
 
   if (zones.length === 0 || selectedElement === null) return null;
 
+  const sz = legendLarge ? 1.45 : 1;  // facteur de grossissement
   const entries = buildLegendEntries(zones, selectedElement);
   const isSemis = selectedElement === 'S' || selectedElement === 'Z';
   const hasCulture = isSemis && cultureName && cultureName.length > 0;
@@ -535,9 +550,9 @@ function MiniLegend({
   })();
 
   return (
-    <View style={styles.miniLegend}>
-      <Pressable style={styles.legendTitleRow} onPress={onToggle}>
-        <Text style={styles.miniLegendTitle}>{title}</Text>
+    <View style={[styles.miniLegend, legendLarge && { width: 270 }]}>
+      <Pressable style={styles.legendTitleRow} onPress={handleTitlePress}>
+        <Text style={[styles.miniLegendTitle, legendLarge && { fontSize: 13 }]}>{title}</Text>
         <View style={styles.legendToggleBtn}>
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -553,22 +568,29 @@ function MiniLegend({
           <ScrollView
             bounces={false}
             showsVerticalScrollIndicator={false}
-            style={styles.legendScroll}>
+            style={[styles.legendScroll, legendLarge && { maxHeight: 380 }]}>
             {entries.map(entry => (
-              <View key={String(entry.id)} style={styles.legendEntry}>
+              <View key={String(entry.id)} style={[styles.legendEntry, legendLarge && { marginBottom: 11 }]}>
                 {/* Ligne 1 : pastille + libellé */}
                 <View style={styles.legendRow}>
-                  <View style={[styles.legendSwatch, { backgroundColor: entry.fillColor }]} />
-                  <Text style={styles.legendLabel}>{entry.label || '—'}</Text>
+                  <View style={[styles.legendSwatch,
+                    { backgroundColor: entry.fillColor },
+                    legendLarge && { width: 18, height: 18, borderRadius: 4 }]}
+                  />
+                  <Text style={[styles.legendLabel, legendLarge && { fontSize: Math.round(11 * sz) }]}>
+                    {entry.label || '—'}
+                  </Text>
                 </View>
                 {/* Ligne 2 : teneur et/ou dose */}
                 {(entry.teneur !== null || entry.dose !== null) && (
-                  <View style={styles.legendSubRow}>
+                  <View style={[styles.legendSubRow, legendLarge && { marginLeft: 26 }]}>
                     {!isSemis && entry.teneur !== null && (
-                      <Text style={styles.legendSubText}>Ten. {String(entry.teneur)}</Text>
+                      <Text style={[styles.legendSubText, legendLarge && { fontSize: Math.round(10 * sz) }]}>
+                        Ten. {String(entry.teneur)}
+                      </Text>
                     )}
                     {entry.dose !== null && (
-                      <Text style={styles.legendSubText}>
+                      <Text style={[styles.legendSubText, legendLarge && { fontSize: Math.round(10 * sz) }]}>
                         {`Dose moy. ${formatDose(entry.dose)}`}
                       </Text>
                     )}
@@ -580,7 +602,7 @@ function MiniLegend({
           {statParts.length > 0 && (
             <>
               <View style={styles.legendDivider} />
-              <Text style={styles.legendStats}>{statParts.join(' · ')}</Text>
+              <Text style={[styles.legendStats, legendLarge && { fontSize: Math.round(10 * sz) }]}>{statParts.join(' · ')}</Text>
             </>
           )}
           {totalDose !== null && (
