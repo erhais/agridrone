@@ -977,10 +977,15 @@ export default function HomeScreen() {
 
 
   const filteredParcelles = features
-    .map((f, i) => ({ index: i, nom: f.properties?.nom_parcel ?? 'Sans nom' }))
+    .map((f, i) => {
+      const raw = f.properties?.nom_parcel ?? 'Sans nom';
+      const nom = raw.length > 0 ? raw[0].toUpperCase() + raw.slice(1) : raw;
+      return { index: i, nom };
+    })
     .filter(({ nom }) =>
       query.length === 0 || nom.toLowerCase().includes(query.toLowerCase()),
-    );
+    )
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
 
   useEffect(() => {
     if (selectedId === null || selectedElement === null || features.length === 0) {
