@@ -101,7 +101,7 @@ const ReportCard = forwardRef<View, ReportProps>(({
       {/* ── Tableau légende ─────────────────────────────────────────── */}
       <View style={styles.tableHeader}>
         <Text style={[styles.thCell, { flex: 1 }]}>Type de sol</Text>
-        {!isSemis && <Text style={[styles.thCell, styles.thNum]}>Teneur</Text>}
+        {!isSemis && <Text style={[styles.thCell, styles.thNum]}>Teneur sol (*)</Text>}
         <Text style={[styles.thCell, styles.thNum]}>
           {`Dose moy.${doseUnit ? `\n(${doseUnit})` : ''}`}
         </Text>
@@ -157,7 +157,12 @@ const ReportCard = forwardRef<View, ReportProps>(({
         </>
       )}
 
-      {/* ── Footer ─────────────────────────────────────────────────── */}
+      {/* ── Note + Footer ──────────────────────────────────────────── */}
+      {!isSemis && (
+        <Text style={styles.footnote}>
+          {`(*) Teneur en ${elementLabel.toLowerCase()} mesurée par analyse de sol`}
+        </Text>
+      )}
       <View style={styles.footer}>
         <Text style={styles.footerText}>© Agridrone - Ehatech {year}</Text>
       </View>
@@ -209,6 +214,7 @@ const styles = StyleSheet.create({
 
   mapImg:            { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
   mapImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  footer:     { marginTop: 14, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 8, alignItems: 'center' },
+  footnote:   { fontSize: 9, color: '#888', fontStyle: 'italic', marginTop: 10, lineHeight: 13 },
+  footer:     { marginTop: 8, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 8, alignItems: 'center' },
   footerText: { fontSize: 10, color: '#AAA' },
 });
