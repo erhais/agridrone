@@ -2132,6 +2132,18 @@ export default function HomeScreen() {
             }
             elementLabel={ELEMENT_LABELS[selectedElement ?? ''] ?? (selectedElement ?? '')}
             isSemis={selectedElement === 'S' || selectedElement === 'Z'}
+            doseUnit={
+              selectedElement === 'Z' ? '' :
+              selectedElement === 'S'
+                ? (semisCultureDefinie?.id === 3 ? 'gr/ha' : 'kg/q')
+                : 'kg/ha'
+            }
+            cultureName={semisCultureDefinie?.nom ?? (lastFormulaireData ? null : null)}
+            teneurEngrais={
+              lastFormulaireData && !['S','Z'].includes(selectedElement ?? '')
+                ? `${lastFormulaireData.teneur_engrais} mg/kg`
+                : null
+            }
             entries={zones.length > 0 && selectedElement
               ? buildLegendEntries(zones, selectedElement).map(e => ({
                   fillColor: e.fillColor,

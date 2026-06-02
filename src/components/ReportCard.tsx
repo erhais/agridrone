@@ -13,6 +13,9 @@ export interface ReportProps {
   parcelleName: string;
   elementLabel: string;
   isSemis: boolean;
+  doseUnit: string;      // ex: 'kg/ha', 'kg/q', 'gr/ha', ''
+  cultureName?: string | null;
+  teneurEngrais?: string | null;
   entries: ReportLegendEntry[];
   stats: {
     superficie: number;
@@ -21,15 +24,20 @@ export interface ReportProps {
     nombre_zones: number;
   } | null;
   totalDose: number | null;
-  date: string;        // ex: "02 juin 2026"
+  date: string;
   year: number;
   mapUri?: string | null;
 }
 
 const ReportCard = forwardRef<View, ReportProps>(({
-  parcelleName, elementLabel, isSemis, entries, stats, totalDose, date, year, mapUri,
+  parcelleName, elementLabel, isSemis, doseUnit, cultureName, teneurEngrais,
+  entries, stats, totalDose, date, year, mapUri,
 }, ref) => {
   const fmtDose = (v: number) => String(Math.ceil(v));
+  const fmtTotal = (dose: number, surf: number) => {
+    const tot = Math.ceil(dose * surf);
+    return doseUnit ? `${tot} ${doseUnit === 'kg/ha' ? 'kg' : doseUnit === 'gr/ha' ? 'M gr' : doseUnit}` : String(tot);
+  };
 
   return (
     <View ref={ref} style={styles.card} collapsable={false}>
@@ -54,6 +62,18 @@ const ReportCard = forwardRef<View, ReportProps>(({
         <Text style={styles.infoLabel}>Carte</Text>
         <Text style={styles.infoValue}>{elementLabel}</Text>
       </View>
+      {!!cultureName && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Culture</Text>
+          <Text style={styles.infoValue}>{cultureName}</Text>
+        </View>
+      )}
+      {!!teneurEngrais && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Teneur engrais</Text>
+          <Text style={styles.infoValue}>{teneurEngrais}</Text>
+        </View>
+      )}
 
       {/* ── Image carte ─────────────────────────────────────────────── */}
       {mapUri ? (
@@ -70,7 +90,10 @@ const ReportCard = forwardRef<View, ReportProps>(({
       <View style={styles.tableHeader}>
         <Text style={[styles.thCell, { flex: 1 }]}>Type de sol</Text>
         {!isSemis && <Text style={[styles.thCell, styles.thNum]}>Teneur</Text>}
-        <Text style={[styles.thCell, styles.thNum]}>Dose moy.</Text>
+        <Text style={[styles.thCell, styles.thNum]}>
+          {`Dose moy.${doseUnit ? `\n(${doseUnit})` : ''}`}
+        </Text>
+        <Text style={[styles.thCell, styles.thNum]}>Dose tot.</Text>
         <Text style={[styles.thCell, styles.thNum]}>Surface</Text>
       </View>
 
@@ -85,6 +108,9 @@ const ReportCard = forwardRef<View, ReportProps>(({
           )}
           <Text style={[styles.tdCell, styles.tdNum]}>
             {e.dose !== null ? fmtDose(e.dose) : '—'}
+          </Text>
+          <Text style={[styles.tdCell, styles.tdNum]}>
+            {e.dose !== null && e.surf_ha > 0 ? fmtTotal(e.dose, e.surf_ha) : '—'}
           </Text>
           <Text style={[styles.tdCell, styles.tdNum]}>
             {e.surf_ha > 0 ? `${e.surf_ha.toFixed(2)} ha` : '—'}
