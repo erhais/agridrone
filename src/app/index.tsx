@@ -519,19 +519,7 @@ function MiniLegend({
   cultureId?: number | null;
 }) {
   const [legendLarge, setLegendLarge] = useState(false);
-  const lastTapRef = useRef(0);
-  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleTitlePress = () => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
-      setLegendLarge(v => !v);
-    } else {
-      tapTimerRef.current = setTimeout(() => onToggle(), 280);
-    }
-    lastTapRef.current = now;
-  };
+  const bodyTapRef = useRef(0);
 
   if (zones.length === 0 || selectedElement === null) return null;
 
@@ -577,29 +565,25 @@ function MiniLegend({
 
   return (
     <View style={[styles.miniLegend, legendLarge && { width: 270 }]}>
-      <Pressable style={styles.legendTitleRow} onPress={handleTitlePress}>
+      <Pressable style={styles.legendTitleRow} onPress={onToggle}>
         <Text style={[styles.miniLegendTitle, legendLarge && { fontSize: 13 }]}>{title}</Text>
-        <View style={styles.legendHeaderBtns}>
-          <View style={styles.legendMagnifyBtn}>
-            <MaterialCommunityIcons
-              name={legendLarge ? 'magnify-minus-outline' : 'magnify-plus-outline'}
-              size={20}
-              color="#546E7A"
-            />
-          </View>
-          <View style={styles.legendToggleBtn}>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color="#fff"
-            />
-          </View>
+        <View style={styles.legendToggleBtn}>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color="#fff"
+          />
         </View>
       </Pressable>
 
       {expanded && (
         <>
           <View style={styles.legendDivider} />
+          <Pressable onPress={() => {
+            const now = Date.now();
+            if (now - bodyTapRef.current < 300) setLegendLarge(v => !v);
+            bodyTapRef.current = now;
+          }}>
           <ScrollView
             bounces={false}
             showsVerticalScrollIndicator={false}
@@ -634,6 +618,7 @@ function MiniLegend({
               </View>
             ))}
           </ScrollView>
+          </Pressable>
           {statParts.length > 0 && (
             <>
               <View style={styles.legendDivider} />
@@ -2568,21 +2553,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '500',
-  },
-  legendHeaderBtns: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  legendMagnifyBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(84,110,122,0.15)',
-    borderWidth: 1,
-    borderColor: '#546E7A',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   legendToggleBtn: {
     width: 28,
