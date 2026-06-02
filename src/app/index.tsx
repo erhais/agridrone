@@ -12,7 +12,6 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -1310,31 +1309,13 @@ export default function HomeScreen() {
         ? (features[selectedId]?.properties?.nom_parcel ?? 'parcelle')
         : 'rapport';
       const fileName = `AgriDrone_${nomParcelle}_${new Date().toISOString().slice(0, 10)}.jpg`;
-      // Demander permission galerie et sauvegarder
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status === 'granted') {
-        const asset = await MediaLibrary.createAssetAsync(uri);
-        // Dossier AgriDrone dans la galerie
-        let album = await MediaLibrary.getAlbumAsync('AgriDrone');
-        if (!album) album = await MediaLibrary.createAlbumAsync('AgriDrone', asset, false);
-        else await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-        setReportVisible(false);
-        Alert.alert('✅ Enregistré', `Image sauvegardée dans la galerie\n(album AgriDrone)`);
-      } else {
-        // Fallback partage système
-        const dest = (FileSystem.documentDirectory ?? '') + fileName;
-        await FileSystem.copyAsync({ from: uri, to: dest });
-        setReportVisible(false);
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(dest, { mimeType: 'image/jpeg', dialogTitle: fileName });
-        } else {
-          Alert.alert('Rapport', `Fichier : ${fileName}`);
-        }
-      }
-    } catch (e) {
-      console.error('[report] capture error:', e);
+      const dest = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '') + fileName;
+      await FileSystem.copyAsync({ from: uri, to: dest });
       setReportVisible(false);
-      Alert.alert('Erreur', 'Impossible de sauvegarder le rapport.');
+      await Sharing.shareAsync(dest, { mimeType: 'image/jpeg', dialogTitle: `Rapport ${nomParcelle}` });
+    } catch {
+      setReportVisible(false);
+      Alert.alert('Erreur', 'Impossible de générer le rapport.');
     }
   };
 
@@ -2092,8 +2073,8 @@ export default function HomeScreen() {
           </ScrollView>
           <View style={styles.reportModalBtns}>
             <Pressable style={styles.reportBtnShare} onPress={() => { void handleCaptureReport(); }}>
-              <Ionicons name="save-outline" size={18} color="#fff" />
-              <Text style={styles.reportBtnShareText}>Enregistrer</Text>
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.reportBtnShareText}>Partager / Enregistrer</Text>
             </Pressable>
             <Pressable style={styles.reportBtnClose} onPress={() => setReportVisible(false)}>
               <Text style={styles.reportBtnCloseText}>Fermer</Text>
