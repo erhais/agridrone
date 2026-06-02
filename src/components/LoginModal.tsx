@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -33,7 +33,7 @@ interface Props {
   onSuccess: () => void;
 }
 
-type Step = 'credentials' | 'repository';
+type Step = 'credentials' | 'repository' | 'no_repo';
 
 export default function LoginModal({ onSuccess }: Props) {
   const [step,         setStep]         = useState<Step>('credentials');
@@ -45,8 +45,15 @@ export default function LoginModal({ onSuccess }: Props) {
   const [repoSearch,   setRepoSearch]   = useState('');
   const [error,        setError]        = useState('');
   const [loading,      setLoading]      = useState(false);
+  const [noRepoCountdown, setNoRepoCountdown] = useState<number | null>(null);
+  const noRepoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  // Nettoyage timer déconnexion
+  useEffect(() => () => {
+    if (noRepoTimerRef.current) clearInterval(noRepoTimerRef.current);
+  }, []);
 
   const shake = () =>
     Animated.sequence([
@@ -68,9 +75,25 @@ export default function LoginModal({ onSuccess }: Props) {
     setError('');
     try {
       const repos = await fetchRepositories(login.trim(), password);
+      if (repos.length === 0) {
+        setStep('no_repo');
+        setNoRepoCountdown(5);
+        noRepoTimerRef.current = setInterval(() => {
+          setNoRepoCountdown(prev => {
+            if (prev === null || prev <= 1) {
+              if (noRepoTimerRef.current) clearInterval(noRepoTimerRef.current);
+              setStep('credentials');
+              setLogin('');
+              setPassword('');
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+        return;
+      }
       setRepositories(repos);
       if (repos.length === 1) {
-        // Un seul dépôt → token direct
         await handleSelectRepository(repos[0]);
       } else {
         setStep('repository');
@@ -182,6 +205,17 @@ export default function LoginModal({ onSuccess }: Props) {
                 </Pressable>
               </View>
             </>
+          ) : step === 'no_repo' ? (
+            <View style={styles.noRepoContainer}>
+              <Ionicons name="warning-outline" size={40} color="#E65100" style={{ marginBottom: 16 }} />
+              <Text style={styles.noRepoTitle}>Aucun projet Agridrone</Text>
+              <Text style={styles.noRepoText}>
+                Aucun projet Agridrone n'est rattaché à votre compte.
+              </Text>
+              <Text style={styles.noRepoCountdown}>
+                Déconnexion dans {noRepoCountdown}s…
+              </Text>
+            </View>
           ) : (
             <>
               <Text style={styles.cardTitle}>Choisir un projet</Text>
@@ -302,6 +336,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginTop: 4,
   },
   loginBtnText: { fontSize: 15, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
+
+  noRepoContainer: { alignItems: 'center', paddingVertical: 16 },
+  noRepoTitle:     { fontSize: 15, fontWeight: '700', color: '#E65100', marginBottom: 10, textAlign: 'center' },
+  noRepoText:      { fontSize: 13, color: '#555', textAlign: 'center', lineHeight: 19, marginBottom: 16 },
+  noRepoCountdown: { fontSize: 13, color: '#888', fontStyle: 'italic' },
 
   repoSubtitle:     { fontSize: 12, color: '#666', marginBottom: 10 },
   repoSearchBox: {
