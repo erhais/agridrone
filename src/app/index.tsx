@@ -12,6 +12,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
+import { captureRef, captureScreen } from 'react-native-view-shot';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +21,7 @@ import {
   Easing,
   Dimensions,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -55,6 +57,7 @@ import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/Formu
 import FormulaireZoneSemis from '../components/FormulaireZoneSemis';
 import FormulaireZoneLibre from '../components/FormulaireZoneLibre';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
+import ReportCard, { type ReportProps } from '../components/ReportCard';
 import { type SemisFormResponse } from '../services/agridroneService';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -168,6 +171,7 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
+  { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
   { id: 'logout',     lib: 'ion', name: 'log-out-outline',       tooltip: 'Déconnexion' },
   { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',      tooltip: 'Me localiser' },
   { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
@@ -876,6 +880,10 @@ function AccordionSection({
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [capturingMap, setCapturingMap] = useState(false);
+  const [mapCaptureUri, setMapCaptureUri] = useState<string | null>(null);
+  const reportRef = useRef<View>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { loading: loadingHello, execute: executeHelloWorld } = useApi(helloWorld);
   const [loadingParcelles, setLoadingParcelles] = useState(false);
@@ -1269,6 +1277,43 @@ export default function HomeScreen() {
     }
   };
 
+  const handleScreenshot = async () => {
+    // Masquer tous les overlays RN → seule la carte native reste visible
+    setCapturingMap(true);
+    await new Promise(r => setTimeout(r, 300));
+    try {
+      const uri = await captureScreen({ format: 'jpg', quality: 0.88 });
+      setMapCaptureUri(uri);
+    } catch {
+      setMapCaptureUri(null);
+    }
+    setCapturingMap(false);
+    setReportVisible(true);
+  };
+
+  const handleCaptureReport = async () => {
+    if (!reportRef.current) return;
+    await new Promise(r => setTimeout(r, 200));
+    try {
+      const uri = await captureRef(reportRef, { format: 'jpg', quality: 0.95 });
+      const nomParcelle = selectedId !== null
+        ? (features[selectedId]?.properties?.nom_parcel ?? 'parcelle')
+        : 'rapport';
+      const fileName = `${nomParcelle}_${new Date().toISOString().slice(0, 10)}.jpg`;
+      const dest = (FileSystem.documentDirectory ?? '') + fileName;
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      setReportVisible(false);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(dest, { mimeType: 'image/jpeg', dialogTitle: fileName });
+      } else {
+        Alert.alert('Rapport', `Image sauvegardée : ${fileName}`);
+      }
+    } catch {
+      setReportVisible(false);
+      Alert.alert('Erreur', 'Impossible de générer le rapport.');
+    }
+  };
+
   const handleIconPress = (id: string) => {
     if (id === 'logout') {
       Alert.alert(
@@ -1332,6 +1377,7 @@ export default function HomeScreen() {
       });
     }
     if (id === 'tractor') void handleTractorPress();
+    if (id === 'screenshot') void handleScreenshot();
     if (id === 'formulaire') {
       if (selectedId === null || selectedElement === null) return;
 
@@ -1613,6 +1659,9 @@ export default function HomeScreen() {
         />
       )}
 
+      {/* ── Overlays UI (masqués pendant capture carte) ──────────────── */}
+      <View style={{ opacity: capturingMap ? 0 : 1 }} pointerEvents={capturingMap ? 'none' : 'box-none'}>
+
       {/* ── 2. Barre de recherche ─────────────────────────────────────── */}
       <SearchBar
         topOffset={searchTop}
@@ -1642,6 +1691,7 @@ export default function HomeScreen() {
           editActive={editZoneMode}
           geolocateActive={isGeolocating}
           visibleIds={[
+            'screenshot',
             'logout',
             'geolocate',
             ...(prelevements.length > 0 ? ['pin'] : []),
@@ -1666,6 +1716,7 @@ export default function HomeScreen() {
         <Ionicons name="navigate" size={13} color="#fff" />
         <Text style={styles.geoMsgText}>Géolocalisation activée</Text>
       </Animated.View>
+
 
       {/* ── Message mode édition zone ────────────────────────────────── */}
       {editZoneMode && selectedZoneIdx === null && showEditHint && (
@@ -1965,6 +2016,59 @@ export default function HomeScreen() {
       {sessionChecked && !isAuthenticated && (
         <LoginModal onSuccess={() => setIsAuthenticated(true)} />
       )}
+      </View>{/* fin overlays UI */}
+
+      {/* ── Modal rapport ──────────────────────────────────────────────── */}
+      <Modal visible={reportVisible} transparent animationType="fade" onRequestClose={() => setReportVisible(false)}>
+        <View style={styles.reportModalBg}>
+          <ReportCard
+            ref={reportRef}
+            parcelleName={
+              selectedId !== null
+                ? (features[selectedId]?.properties?.nom_parcel ?? 'Parcelle')
+                : 'Parcelle'
+            }
+            elementLabel={ELEMENT_LABELS[selectedElement ?? ''] ?? (selectedElement ?? '')}
+            isSemis={selectedElement === 'S' || selectedElement === 'Z'}
+            entries={zones.length > 0 && selectedElement
+              ? buildLegendEntries(zones, selectedElement).map(e => ({
+                  fillColor: e.fillColor,
+                  label: e.label,
+                  teneur: e.teneur,
+                  dose: e.dose,
+                  surf_ha: e.surf_ha,
+                }))
+              : []}
+            stats={parcelleStats ? {
+              superficie: parcelleStats.superficie_parcelle > 0
+                ? parcelleStats.superficie_parcelle
+                : parcelleStats.surface_totale,
+              dose_moyenne: parcelleStats.dose_moyenne,
+              teneur_moyenne: parcelleStats.teneur_moyenne,
+              nombre_zones: parcelleStats.nombre_zones,
+            } : null}
+            totalDose={(() => {
+              if (!zones.length || !selectedElement) return null;
+              const entries = buildLegendEntries(zones, selectedElement);
+              const sum = entries.reduce((acc, e) =>
+                e.dose !== null && e.surf_ha > 0 ? acc + e.dose * e.surf_ha : acc, 0);
+              return sum > 0 ? sum : null;
+            })()}
+            date={new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+            year={new Date().getFullYear()}
+            mapUri={mapCaptureUri}
+          />
+          <View style={styles.reportModalBtns}>
+            <Pressable style={styles.reportBtnShare} onPress={() => { void handleCaptureReport(); }}>
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.reportBtnShareText}>Partager</Text>
+            </Pressable>
+            <Pressable style={styles.reportBtnClose} onPress={() => setReportVisible(false)}>
+              <Text style={styles.reportBtnCloseText}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2229,6 +2333,35 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 6,
   },
+  reportModalBg: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  reportModalBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  reportBtnShare: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2E6B1A',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  reportBtnShareText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  reportBtnClose: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  reportBtnCloseText: { fontSize: 14, fontWeight: '600', color: '#fff' },
   geoMsg: {
     position: 'absolute',
     alignSelf: 'center',
