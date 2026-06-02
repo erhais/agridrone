@@ -1660,7 +1660,7 @@ export default function HomeScreen() {
       )}
 
       {/* ── Overlays UI (masqués pendant capture carte) ──────────────── */}
-      <View style={{ opacity: capturingMap ? 0 : 1 }} pointerEvents={capturingMap ? 'none' : 'box-none'}>
+      <View style={[StyleSheet.absoluteFillObject, { opacity: capturingMap ? 0 : 1 }]} pointerEvents={capturingMap ? 'none' : 'box-none'}>
 
       {/* ── 2. Barre de recherche ─────────────────────────────────────── */}
       <SearchBar
