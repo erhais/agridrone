@@ -876,7 +876,7 @@ export default function HomeScreen() {
   const [legendExpanded, setLegendExpanded] = useState(true);
   const [showDoseLabels, setShowDoseLabels] = useState(false);
   const [labelPositions, setLabelPositions] = useState<
-    Array<{ key: string; x: number; y: number; doseStr: string }>
+    Array<{ key: string; x: number; y: number; doseStr: string; perso: boolean }>
   >([]);
   const [editZoneMode, setEditZoneMode] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
@@ -1086,9 +1086,10 @@ export default function HomeScreen() {
     const { height: screenH } = Dimensions.get('window');
     const threshold = mapLatDelta * (60 / screenH);
     const placed: { lat: number; lng: number }[] = [];
-    const toProcess: Array<{ zi: number; lat: number; lng: number; doseStr: string }> = [];
+    const toProcess: Array<{ zi: number; lat: number; lng: number; doseStr: string; perso: boolean }> = [];
 
     zones.forEach((zone, zi) => {
+      console.log(`[dose-label zi=${zi}] properties:`, JSON.stringify(zone.properties));
       const dose = zone.properties?.dose;
       const c = zone.centroid;
       if (!c || dose == null || (dose as number) < 0) return;
@@ -1098,11 +1099,13 @@ export default function HomeScreen() {
       if (tooClose) return;
       placed.push({ lat: c.lat, lng: c.lng });
       const v = Number(dose);
+      const perso = Number(zone.properties?.perso_dose) === 1;
       toProcess.push({
         zi,
         lat: c.lat,
         lng: c.lng,
         doseStr: v >= 10 ? Math.round(v).toString() : v.toFixed(2),
+        perso,
       });
     });
 
@@ -1112,7 +1115,7 @@ export default function HomeScreen() {
       toProcess.map(item =>
         mapRef.current!
           .pointForCoordinate({ latitude: item.lat, longitude: item.lng })
-          .then(pt => ({ key: `dose-${item.zi}`, x: pt.x, y: pt.y, doseStr: item.doseStr }))
+          .then(pt => ({ key: `dose-${item.zi}`, x: pt.x, y: pt.y, doseStr: item.doseStr, perso: item.perso }))
           .catch(() => null),
       ),
     );
@@ -1576,7 +1579,9 @@ export default function HomeScreen() {
           key={pos.key}
           style={[styles.doseLabelOverlay, { left: pos.x, top: pos.y }]}
           pointerEvents="none">
-          <Text style={styles.doseLabelText}>{pos.doseStr}</Text>
+          <Text style={[styles.doseLabelText, pos.perso && styles.doseLabelPerso]}>
+            {pos.doseStr}
+          </Text>
         </View>
       ))}
 
@@ -2327,6 +2332,10 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 3,
     overflow: 'hidden',
+  },
+  doseLabelPerso: {
+    backgroundColor: 'rgba(255,180,180,0.9)',
+    color: '#8B0000',
   },
   markerWrapper: {
     width: 50,
