@@ -36,9 +36,9 @@ const ReportCard = forwardRef<View, ReportProps>(({
   entries, stats, totalDose, date, year, mapUri,
 }, ref) => {
   const fmtDose = (v: number) => String(Math.ceil(v));
-  const fmtTotal = (kg: number): { val: string; unit: string } => {
+  const fmtTotal = (kg: number): { val: string; unit: string; sub?: string } => {
     if ((doseUnit === 'kg/ha' || doseUnit === 'kg/q' || doseUnit === '') && kg >= 1000)
-      return { val: (kg / 1000).toFixed(2), unit: 't' };
+      return { val: (kg / 1000).toFixed(2), unit: 't', sub: `(${Math.ceil(kg)} kg)` };
     if (doseUnit === 'gr/ha')
       return { val: (kg / 1_000_000).toFixed(2), unit: 'M gr' };
     return { val: String(Math.ceil(kg)), unit: doseUnit === 'kg/ha' || doseUnit === 'kg/q' ? 'kg' : '' };
@@ -151,10 +151,11 @@ const ReportCard = forwardRef<View, ReportProps>(({
               </View>
             )}
             {totalDose != null && (() => {
-              const { val, unit } = fmtTotal(totalDose);
+              const { val, unit, sub } = fmtTotal(totalDose);
               return (
                 <View style={styles.statItem}>
                   <Text style={styles.statVal}>{val} <Text style={{ fontSize: 10 }}>{unit}</Text></Text>
+                  {!!sub && <Text style={styles.statSub}>{sub}</Text>}
                   <Text style={styles.statLbl}>Dose totale{'\n'}à épandre</Text>
                 </View>
               );
@@ -217,6 +218,7 @@ const styles = StyleSheet.create({
   statItemSmall: { flex: 1 },
   statVal:     { fontSize: 13, fontWeight: '800', color: '#2E6B1A', textAlign: 'center' },
   statLbl:     { fontSize: 8, color: '#666', marginTop: 2, textAlign: 'center' },
+  statSub:     { fontSize: 8, color: '#999', fontStyle: 'italic', textAlign: 'center' },
 
   mapImg:            { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
   mapImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
