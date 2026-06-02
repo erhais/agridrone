@@ -36,8 +36,13 @@ const ReportCard = forwardRef<View, ReportProps>(({
   entries, stats, totalDose, date, year, mapUri,
 }, ref) => {
   const fmtDose = (v: number) => String(Math.ceil(v));
-  const totalUnit = doseUnit === 'kg/ha' || doseUnit === 'kg/q' ? ' kg'
-    : doseUnit === 'gr/ha' ? ' M gr' : '';
+  const fmtTotal = (kg: number): { val: string; unit: string } => {
+    if ((doseUnit === 'kg/ha' || doseUnit === 'kg/q' || doseUnit === '') && kg >= 1000)
+      return { val: (kg / 1000).toFixed(2), unit: 't' };
+    if (doseUnit === 'gr/ha')
+      return { val: (kg / 1_000_000).toFixed(2), unit: 'M gr' };
+    return { val: String(Math.ceil(kg)), unit: doseUnit === 'kg/ha' || doseUnit === 'kg/q' ? 'kg' : '' };
+  };
 
   return (
     <View ref={ref} style={styles.card} collapsable={false}>
@@ -145,14 +150,15 @@ const ReportCard = forwardRef<View, ReportProps>(({
                 </Text>
               </View>
             )}
-            {totalDose != null && (
-              <View style={styles.statItem}>
-                <Text style={styles.statVal}>
-                  {`${Math.ceil(totalDose)}${totalUnit}`}
-                </Text>
-                <Text style={styles.statLbl}>Dose totale{'\n'}à épandre</Text>
-              </View>
-            )}
+            {totalDose != null && (() => {
+              const { val, unit } = fmtTotal(totalDose);
+              return (
+                <View style={styles.statItem}>
+                  <Text style={styles.statVal}>{val} <Text style={{ fontSize: 10 }}>{unit}</Text></Text>
+                  <Text style={styles.statLbl}>Dose totale{'\n'}à épandre</Text>
+                </View>
+              );
+            })()}
           </View>
         </>
       )}
