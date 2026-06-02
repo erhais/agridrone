@@ -2195,9 +2195,9 @@ export default function HomeScreen() {
             totalDose={(() => {
               if (!zones.length || !selectedElement) return null;
               const entries = buildLegendEntries(zones, selectedElement);
-              const sum = entries.reduce((acc, e) =>
+              if (entries.length === 0) return null;
+              return entries.reduce((acc, e) =>
                 e.dose !== null && e.surf_ha > 0 ? acc + e.dose * e.surf_ha : acc, 0);
-              return sum > 0 ? sum : null;
             })()}
             date={new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
             year={new Date().getFullYear()}

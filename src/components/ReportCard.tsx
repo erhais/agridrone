@@ -64,21 +64,25 @@ const ReportCard = forwardRef<View, ReportProps>(({
         <Text style={styles.infoLabel}>Carte</Text>
         <Text style={styles.infoValue}>
           {elementLabel}
-          {!!teneurEngrais ? ` — Teneur : ${teneurEngrais}` : ''}
+          {!!teneurEngrais
+            ? <Text><Text style={styles.infoNormal}>{' — Teneur : '}</Text>{teneurEngrais}</Text>
+            : ''}
         </Text>
       </View>
 
       {/* Culture + Objectif rendement sur la même ligne */}
       {(!!cultureName || !!objRendement) && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>
-            {cultureName ? 'Culture' : 'Obj. Rend.'}
-          </Text>
+          <Text style={styles.infoLabel}>{cultureName ? 'Culture' : 'Obj. Rend.'}</Text>
           <Text style={styles.infoValue}>
-            {[
-              cultureName,
-              objRendement ? `Obj. Rend. : ${objRendement} q/ha` : null,
-            ].filter(Boolean).join(' · ')}
+            {!!cultureName && <Text>{cultureName}</Text>}
+            {!!cultureName && !!objRendement && <Text style={styles.infoNormal}>{' · '}</Text>}
+            {!!objRendement && (
+              <Text>
+                <Text style={styles.infoNormal}>{'Obj. Rend. : '}</Text>
+                <Text style={styles.infoValueBold}>{objRendement}<Text style={styles.infoValueBoldUnit}>%</Text></Text>
+              </Text>
+            )}
           </Text>
         </View>
       )}
@@ -147,7 +151,7 @@ const ReportCard = forwardRef<View, ReportProps>(({
                 </Text>
               </View>
             )}
-            {totalDose !== null && (
+            {totalDose != null && (
               <View style={styles.statItem}>
                 <Text style={styles.statVal}>
                   {`${Math.ceil(totalDose)}${totalUnit}`}
@@ -187,8 +191,11 @@ const styles = StyleSheet.create({
   date:       { fontSize: 11, color: '#555', textAlign: 'right', marginTop: 4 },
   divider:    { height: 1, backgroundColor: '#E0E0E0', marginVertical: 10 },
   infoRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  infoLabel:  { fontSize: 11, color: '#888', fontWeight: '600', width: 65 },
-  infoValue:  { fontSize: 12, color: '#222', fontWeight: '700', flex: 1, textAlign: 'right' },
+  infoLabel:      { fontSize: 11, color: '#888', fontWeight: '600', width: 65 },
+  infoValue:      { fontSize: 12, color: '#222', fontWeight: '700', flex: 1, textAlign: 'right' },
+  infoNormal:     { fontSize: 12, color: '#555', fontWeight: '400' },
+  infoValueBold:  { fontSize: 12, color: '#222', fontWeight: '700' },
+  infoValueBoldUnit: { fontSize: 12, color: '#2E6B1A', fontWeight: '800' },
 
   tableHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, backgroundColor: '#F5F5F5', paddingHorizontal: 4, borderRadius: 4 },
   thCell:      { fontSize: 10, fontWeight: '700', color: '#555' },
