@@ -1769,7 +1769,7 @@ export default function HomeScreen() {
             'switch',
             'logout',
             'geolocate',
-            ...(zones.length > 0 && ['P','K','MG'].includes(selectedElement ?? '') ? ['screenshot'] : []),
+            ...(zones.length > 0 && ['P','K','MG','S'].includes(selectedElement ?? '') ? ['screenshot'] : []),
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
             ...(zones.length > 0 ? ['doses', 'attributs'] : []),
