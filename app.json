@@ -8,11 +8,20 @@
     "scheme": "appagridrone",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "fr.agridrone.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "fr.agridrone.app",
-      "versionCode": 1,
+      "versionCode": 2,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBoEuDehwcu2LDxrAWlWjPeoTfSacY8bsM"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
