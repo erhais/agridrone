@@ -13,7 +13,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
-import { captureRef, captureScreen } from 'react-native-view-shot';
+import { captureRef } from 'react-native-view-shot';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -1279,16 +1279,25 @@ export default function HomeScreen() {
   };
 
   const handleScreenshot = async () => {
-    // Masquer tous les overlays RN → seule la carte native reste visible
-    setCapturingMap(true);
-    await new Promise(r => setTimeout(r, 300));
+    if (!mapRef.current) { setReportVisible(true); return; }
     try {
-      const uri = await captureScreen({ format: 'jpg', quality: 0.88 });
+      // takeSnapshot capture la carte native directement avec la région voulue
+      const region = selectedId !== null
+        ? computeRegion([features[selectedId]], 1.5) ?? undefined
+        : undefined;
+      const { width, height } = Dimensions.get('window');
+      const uri = await mapRef.current.takeSnapshot({
+        width,
+        height: Math.round(width * 0.75), // ratio 4:3 portrait
+        region,
+        format: 'jpg',
+        quality: 0.9,
+        result: 'file',
+      });
       setMapCaptureUri(uri);
     } catch {
       setMapCaptureUri(null);
     }
-    setCapturingMap(false);
     setReportVisible(true);
   };
 

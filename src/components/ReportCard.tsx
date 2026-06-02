@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   statVal:     { fontSize: 16, fontWeight: '800', color: '#2E6B1A' },
   statLbl:     { fontSize: 9, color: '#666', marginTop: 2 },
 
-  mapImg:             { width: '100%', height: 180, borderRadius: 6, marginVertical: 10 },
+  mapImg:             { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
   mapImgPlaceholder:  { backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },
   footer:      { marginTop: 14, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 8, alignItems: 'center' },
   footerText:  { fontSize: 10, color: '#AAA' },
