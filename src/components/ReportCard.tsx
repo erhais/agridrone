@@ -13,9 +13,10 @@ export interface ReportProps {
   parcelleName: string;
   elementLabel: string;
   isSemis: boolean;
-  doseUnit: string;      // ex: 'kg/ha', 'kg/q', 'gr/ha', ''
+  doseUnit: string;           // 'kg/ha' | 'kg/q' | 'gr/ha' | ''
   cultureName?: string | null;
-  teneurEngrais?: string | null;
+  teneurEngrais?: string | null;  // valeur brute (ex: "63")
+  objRendement?: string | null;   // ex: "75"
   entries: ReportLegendEntry[];
   stats: {
     superficie: number;
@@ -30,14 +31,13 @@ export interface ReportProps {
 }
 
 const ReportCard = forwardRef<View, ReportProps>(({
-  parcelleName, elementLabel, isSemis, doseUnit, cultureName, teneurEngrais,
+  parcelleName, elementLabel, isSemis, doseUnit,
+  cultureName, teneurEngrais, objRendement,
   entries, stats, totalDose, date, year, mapUri,
 }, ref) => {
   const fmtDose = (v: number) => String(Math.ceil(v));
-  const fmtTotal = (dose: number, surf: number) => {
-    const tot = Math.ceil(dose * surf);
-    return doseUnit ? `${tot} ${doseUnit === 'kg/ha' ? 'kg' : doseUnit === 'gr/ha' ? 'M gr' : doseUnit}` : String(tot);
-  };
+  const totalUnit = doseUnit === 'kg/ha' || doseUnit === 'kg/q' ? ' kg'
+    : doseUnit === 'gr/ha' ? ' M gr' : '';
 
   return (
     <View ref={ref} style={styles.card} collapsable={false}>
@@ -58,20 +58,28 @@ const ReportCard = forwardRef<View, ReportProps>(({
         <Text style={styles.infoLabel}>Parcelle</Text>
         <Text style={styles.infoValue}>{parcelleName}</Text>
       </View>
+
+      {/* Carte + teneur sur la même ligne */}
       <View style={styles.infoRow}>
         <Text style={styles.infoLabel}>Carte</Text>
-        <Text style={styles.infoValue}>{elementLabel}</Text>
+        <Text style={styles.infoValue}>
+          {elementLabel}
+          {!!teneurEngrais ? ` — Teneur : ${teneurEngrais}` : ''}
+        </Text>
       </View>
-      {!!cultureName && (
+
+      {/* Culture + Objectif rendement sur la même ligne */}
+      {(!!cultureName || !!objRendement) && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Culture</Text>
-          <Text style={styles.infoValue}>{cultureName}</Text>
-        </View>
-      )}
-      {!!teneurEngrais && (
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Teneur engrais</Text>
-          <Text style={styles.infoValue}>{teneurEngrais}</Text>
+          <Text style={styles.infoLabel}>
+            {cultureName ? 'Culture' : 'Obj. Rend.'}
+          </Text>
+          <Text style={styles.infoValue}>
+            {[
+              cultureName,
+              objRendement ? `Obj. Rend. : ${objRendement} q/ha` : null,
+            ].filter(Boolean).join(' · ')}
+          </Text>
         </View>
       )}
 
@@ -93,7 +101,6 @@ const ReportCard = forwardRef<View, ReportProps>(({
         <Text style={[styles.thCell, styles.thNum]}>
           {`Dose moy.${doseUnit ? `\n(${doseUnit})` : ''}`}
         </Text>
-        <Text style={[styles.thCell, styles.thNum]}>Dose tot.</Text>
         <Text style={[styles.thCell, styles.thNum]}>Surface</Text>
       </View>
 
@@ -108,9 +115,6 @@ const ReportCard = forwardRef<View, ReportProps>(({
           )}
           <Text style={[styles.tdCell, styles.tdNum]}>
             {e.dose !== null ? fmtDose(e.dose) : '—'}
-          </Text>
-          <Text style={[styles.tdCell, styles.tdNum]}>
-            {e.dose !== null && e.surf_ha > 0 ? fmtTotal(e.dose, e.surf_ha) : '—'}
           </Text>
           <Text style={[styles.tdCell, styles.tdNum]}>
             {e.surf_ha > 0 ? `${e.surf_ha.toFixed(2)} ha` : '—'}
@@ -138,20 +142,24 @@ const ReportCard = forwardRef<View, ReportProps>(({
             {stats.dose_moyenne != null && (
               <View style={styles.statItem}>
                 <Text style={styles.statVal}>{Math.ceil(stats.dose_moyenne)}</Text>
-                <Text style={styles.statLbl}>Dose moy.</Text>
+                <Text style={styles.statLbl}>
+                  {`Dose moy.${doseUnit ? `\n${doseUnit}` : ''}`}
+                </Text>
               </View>
             )}
             {totalDose !== null && (
               <View style={styles.statItem}>
-                <Text style={styles.statVal}>{Math.ceil(totalDose)} kg</Text>
-                <Text style={styles.statLbl}>À épandre</Text>
+                <Text style={styles.statVal}>
+                  {`${Math.ceil(totalDose)}${totalUnit}`}
+                </Text>
+                <Text style={styles.statLbl}>Dose totale{'\n'}à épandre</Text>
               </View>
             )}
           </View>
         </>
       )}
 
-      {/* ── Footer copyright ────────────────────────────────────────── */}
+      {/* ── Footer ─────────────────────────────────────────────────── */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>© Agridrone - Ehatech {year}</Text>
       </View>
@@ -193,12 +201,12 @@ const styles = StyleSheet.create({
   tdNum:       { width: 56, textAlign: 'right', fontSize: 11, color: '#333' },
 
   statsGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
-  statItem:    { alignItems: 'center', backgroundColor: '#F0F7E8', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, minWidth: 72 },
-  statVal:     { fontSize: 16, fontWeight: '800', color: '#2E6B1A' },
-  statLbl:     { fontSize: 9, color: '#666', marginTop: 2 },
+  statItem:    { alignItems: 'center', backgroundColor: '#F0F7E8', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, minWidth: 80 },
+  statVal:     { fontSize: 15, fontWeight: '800', color: '#2E6B1A', textAlign: 'center' },
+  statLbl:     { fontSize: 9, color: '#666', marginTop: 2, textAlign: 'center' },
 
-  mapImg:             { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
-  mapImgPlaceholder:  { backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },
-  footer:      { marginTop: 14, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 8, alignItems: 'center' },
-  footerText:  { fontSize: 10, color: '#AAA' },
+  mapImg:            { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
+  mapImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  footer:     { marginTop: 14, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 8, alignItems: 'center' },
+  footerText: { fontSize: 10, color: '#AAA' },
 });

@@ -877,6 +877,7 @@ export default function HomeScreen() {
   const [mapCaptureUri, setMapCaptureUri] = useState<string | null>(null);
   const [reportCultureName, setReportCultureName] = useState<string | null>(null);
   const [reportTeneurEngrais, setReportTeneurEngrais] = useState<string | null>(null);
+  const [reportObjRendement, setReportObjRendement] = useState<string | null>(null);
   const reportRef = useRef<View>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { loading: loadingHello, execute: executeHelloWorld } = useApi(helloWorld);
@@ -1330,17 +1331,21 @@ export default function HomeScreen() {
         const cultures = await getCultures().catch(() => []);
         const culture = cultures.find((c: ReferentielItem) => c.id === formData.id_culture);
         setReportCultureName(culture?.nom ?? null);
-        setReportTeneurEngrais(formData.teneur_engrais != null ? `${formData.teneur_engrais} mg/kg` : null);
+        setReportTeneurEngrais(formData.teneur_engrais != null ? String(formData.teneur_engrais) : null);
+        setReportObjRendement(formData.obj_rendement != null ? String(formData.obj_rendement) : null);
       } else {
         setReportCultureName(null);
         setReportTeneurEngrais(null);
+        setReportObjRendement(null);
       }
     } else if (selectedElement === 'S') {
       setReportCultureName(semisCultureDefinie?.nom ?? null);
       setReportTeneurEngrais(null);
+      setReportObjRendement(null);
     } else {
       setReportCultureName(null);
       setReportTeneurEngrais(null);
+      setReportObjRendement(null);
     }
 
     if (!mapRef.current) { setReportVisible(true); return; }
@@ -2169,6 +2174,7 @@ export default function HomeScreen() {
             }
             cultureName={reportCultureName}
             teneurEngrais={reportTeneurEngrais}
+            objRendement={reportObjRendement}
             entries={zones.length > 0 && selectedElement
               ? buildLegendEntries(zones, selectedElement).map(e => ({
                   fillColor: e.fillColor,
