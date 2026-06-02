@@ -1089,7 +1089,6 @@ export default function HomeScreen() {
     const toProcess: Array<{ zi: number; lat: number; lng: number; doseStr: string; perso: boolean }> = [];
 
     zones.forEach((zone, zi) => {
-      console.log(`[dose-label zi=${zi}] properties:`, JSON.stringify(zone.properties));
       const dose = zone.properties?.dose;
       const c = zone.centroid;
       if (!c || dose == null || (dose as number) < 0) return;
