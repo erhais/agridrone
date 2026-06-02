@@ -159,3 +159,33 @@ export async function getStoredCredentials(): Promise<{
   if (!login || !repository) return null;
   return { login, repository };
 }
+
+// Récupère les dépôts disponibles pour l'utilisateur mémorisé
+export async function fetchRepositoriesStored(): Promise<AuthRepository[] | null> {
+  const [login, password] = await Promise.all([
+    SecureStore.getItemAsync(KEY_LOGIN),
+    SecureStore.getItemAsync(KEY_PASSWORD),
+  ]);
+  if (!login || !password) return null;
+  try {
+    return await fetchRepositories(login, password);
+  } catch {
+    return null;
+  }
+}
+
+// Change de projet sans re-saisir les identifiants
+export async function switchRepository(repoCle: string): Promise<string | null> {
+  const [login, password] = await Promise.all([
+    SecureStore.getItemAsync(KEY_LOGIN),
+    SecureStore.getItemAsync(KEY_PASSWORD),
+  ]);
+  if (!login || !password) return null;
+  try {
+    const data = await fetchToken(login, password, repoCle);
+    await saveSession(data.access_token, data.expires_in, login, password, repoCle, true);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}

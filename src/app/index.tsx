@@ -50,7 +50,7 @@ import {
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
 import LoginModal, { clearSession } from '../components/LoginModal';
-import { loadToken, refreshToken } from '../services/authService';
+import { loadToken, refreshToken, fetchRepositoriesStored, switchRepository, type AuthRepository } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
@@ -171,8 +171,9 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'logout',     lib: 'ion', name: 'log-out-outline',       tooltip: 'Déconnexion' },
-  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',      tooltip: 'Me localiser' },
+  { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet' },
+  { id: 'logout',     lib: 'ion', name: 'log-out-outline',        tooltip: 'Déconnexion' },
+  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',       tooltip: 'Me localiser' },
   { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
   { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline',      tooltip: 'Étiquettes doses' },
@@ -881,6 +882,10 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const [reportVisible, setReportVisible] = useState(false);
+  const [switchProjectVisible, setSwitchProjectVisible] = useState(false);
+  const [switchRepos, setSwitchRepos] = useState<AuthRepository[]>([]);
+  const [switchLoading, setSwitchLoading] = useState(false);
+  const [switchSearch, setSwitchSearch] = useState('');
   const [capturingMap, setCapturingMap] = useState(false);
   const [mapCaptureUri, setMapCaptureUri] = useState<string | null>(null);
   const reportRef = useRef<View>(null);
@@ -1290,6 +1295,38 @@ export default function HomeScreen() {
     }
   };
 
+  const handleSwitchProject = async () => {
+    setSwitchLoading(true);
+    const repos = await fetchRepositoriesStored();
+    setSwitchLoading(false);
+    if (!repos || repos.length === 0) {
+      Alert.alert('Indisponible', 'Reconnectez-vous pour changer de projet.');
+      return;
+    }
+    if (repos.length === 1) {
+      Alert.alert('Info', 'Vous n\'avez qu\'un seul projet associé à votre compte.');
+      return;
+    }
+    setSwitchRepos(repos);
+    setSwitchSearch('');
+    setSwitchProjectVisible(true);
+  };
+
+  const handleSelectProject = async (repo: AuthRepository) => {
+    setSwitchProjectVisible(false);
+    const token = await switchRepository(repo.cle);
+    if (!token) { Alert.alert('Erreur', 'Impossible de changer de projet.'); return; }
+    // Réinitialiser la carte et recharger les parcelles du nouveau projet
+    setFeatures([]);
+    setZones([]);
+    setSelectedId(null);
+    setSelectedElement(null);
+    setParcelleStats(null);
+    setParcelleDbId(null);
+    setIsAuthenticated(false);
+    setTimeout(() => setIsAuthenticated(true), 50);
+  };
+
   const handleScreenshot = async () => {
     if (!mapRef.current) { setReportVisible(true); return; }
     try {
@@ -1333,6 +1370,7 @@ export default function HomeScreen() {
   };
 
   const handleIconPress = (id: string) => {
+    if (id === 'switch') void handleSwitchProject();
     if (id === 'logout') {
       Alert.alert(
         'Déconnexion',
@@ -1709,6 +1747,7 @@ export default function HomeScreen() {
           editActive={editZoneMode}
           geolocateActive={isGeolocating}
           visibleIds={[
+            'switch',
             'logout',
             'geolocate',
             ...(zones.length > 0 ? ['screenshot'] : []),
@@ -2036,6 +2075,60 @@ export default function HomeScreen() {
       )}
       </View>{/* fin overlays UI */}
 
+      {/* ── Modal changement de projet ─────────────────────────────────── */}
+      <Modal visible={switchProjectVisible} transparent animationType="fade" onRequestClose={() => setSwitchProjectVisible(false)}>
+        <Pressable style={styles.switchModalBg} onPress={() => setSwitchProjectVisible(false)}>
+          <View style={styles.switchModalCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.switchModalTitle}>Changer de projet</Text>
+            <View style={styles.legendDivider} />
+            {switchRepos.length > 3 && (
+              <View style={styles.switchSearchBox}>
+                <Ionicons name="search-outline" size={14} color="#9E9E9E" style={{ marginRight: 6 }} />
+                <TextInput
+                  style={styles.switchSearchInput}
+                  placeholder="Rechercher un projet…"
+                  placeholderTextColor="#BDBDBD"
+                  value={switchSearch}
+                  onChangeText={setSwitchSearch}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  clearButtonMode="while-editing"
+                />
+              </View>
+            )}
+            <ScrollView
+              style={styles.switchRepoList}
+              bounces={false}
+              showsVerticalScrollIndicator={switchRepos.length > 5}
+              keyboardShouldPersistTaps="handled">
+              {switchRepos
+                .filter(r => switchSearch.trim() === '' ||
+                  r.label.toLowerCase().includes(switchSearch.trim().toLowerCase()))
+                .map(repo => (
+                  <Pressable
+                    key={repo.cle}
+                    style={({ pressed }) => [styles.switchRepoItem, pressed && { opacity: 0.7 }]}
+                    onPress={() => { void handleSelectProject(repo); }}>
+                    <Text style={styles.switchRepoEmoji}>🚜</Text>
+                    <Text style={styles.switchRepoName}>{repo.label}</Text>
+                    <Ionicons name="chevron-forward" size={16} color="#BDBDBD" />
+                  </Pressable>
+                ))}
+            </ScrollView>
+            <Pressable style={styles.switchCancelBtn} onPress={() => setSwitchProjectVisible(false)}>
+              <Text style={styles.switchCancelText}>Annuler</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* ── Indicateur chargement switch ───────────────────────────────── */}
+      {switchLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#2196F3" />
+        </View>
+      )}
+
       {/* ── Modal rapport ──────────────────────────────────────────────── */}
       <Modal visible={reportVisible} transparent animationType="fade" onRequestClose={() => setReportVisible(false)}>
         <View style={styles.reportModalBg}>
@@ -2359,6 +2452,49 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 6,
   },
+  switchModalBg: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  switchModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    width: '100%',
+    maxWidth: 380,
+    paddingVertical: 16,
+    overflow: 'hidden',
+  },
+  switchModalTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2C4A1A',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  switchRepoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#F0F0F0',
+  },
+  switchSearchBox: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#D0E4BE', borderRadius: 8,
+    backgroundColor: '#F7FBF2', paddingHorizontal: 10, height: 38,
+    marginHorizontal: 16, marginBottom: 8,
+  },
+  switchSearchInput: { flex: 1, fontSize: 13, color: '#333' },
+  switchRepoList:   { maxHeight: 320 },
+  switchRepoEmoji:  { fontSize: 20 },
+  switchRepoName:   { flex: 1, fontSize: 14, color: '#2C4A1A', fontWeight: '500' },
+  switchCancelBtn:  { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  switchCancelText: { fontSize: 14, color: '#888', fontWeight: '600' },
   reportModalBg: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
