@@ -164,16 +164,17 @@ interface IconDef {
   name: string;
   color?: string;
   bg?: string;
+  tooltip: string;
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'logout',     lib: 'ion', name: 'log-out-outline' },
-  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline' },
-  { id: 'pin',        lib: 'ion', name: 'location-outline' },
-  { id: 'doses',      lib: 'ion', name: 'pricetag-outline' },
-  { id: 'attributs',  lib: 'ion', name: 'create-outline' },
-  { id: 'formulaire', lib: 'ion', name: 'document-text-outline' },
-  { id: 'tractor',    lib: 'mci', name: 'tractor' },
+  { id: 'logout',     lib: 'ion', name: 'log-out-outline',       tooltip: 'Déconnexion' },
+  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',      tooltip: 'Me localiser' },
+  { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
+  { id: 'doses',      lib: 'ion', name: 'pricetag-outline',      tooltip: 'Étiquettes doses' },
+  { id: 'attributs',  lib: 'ion', name: 'create-outline',        tooltip: 'Éditer les zones' },
+  { id: 'formulaire', lib: 'ion', name: 'document-text-outline', tooltip: 'Formulaire parcelle' },
+  { id: 'tractor',    lib: 'mci', name: 'tractor',               tooltip: 'Exporter shapefile' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +285,8 @@ function SearchBar({
 // 3. Barre d'icônes verticale (droite)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const ICON_BTN_H = 54;
+
 function RightIconBar({
   topOffset,
   onPressIcon,
@@ -303,7 +306,17 @@ function RightIconBar({
   geolocateActive?: boolean;
   visibleIds?: string[];
 }) {
+  const [tooltipId, setTooltipId] = useState<string | null>(null);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showTooltip = (id: string) => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    setTooltipId(id);
+    tooltipTimer.current = setTimeout(() => setTooltipId(null), 2000);
+  };
+
   const icons = visibleIds ? RIGHT_ICONS.filter(i => visibleIds.includes(i.id)) : RIGHT_ICONS;
+
   return (
     <View style={[styles.iconBar, { top: topOffset }]}>
       {icons.map((item, index) => {
@@ -313,33 +326,41 @@ function RightIconBar({
           || (item.id === 'attributs' && editActive)
           || (item.id === 'geolocate' && geolocateActive);
         return (
-          <Pressable
-            key={item.id}
-            onPress={() => onPressIcon?.(item.id)}
-            style={({ pressed }) => [
-              styles.iconBtn,
-              item.bg ? { backgroundColor: item.bg } : null,
-              index > 0 &&
-                !item.bg &&
-                !icons[index - 1].bg && {
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderTopColor: '#EEEEEE',
-                },
-              pressed && styles.iconBtnPressed,
-            ]}>
-            <View style={active ? styles.iconHalo : undefined}>
-              <Icon
-                lib={item.lib}
-                name={item.name}
-                size={item.id === 'tractor' ? 28 : 24}
-                color={
-                  item.id === 'tractor' ? '#2E7D32'
-                  : active ? '#2E7D32'
-                  : (item.color ?? '#546E7A')
-                }
-              />
-            </View>
-          </Pressable>
+          <View key={item.id} style={{ position: 'relative' }}>
+            {tooltipId === item.id && (
+              <View style={[styles.iconTooltip, { top: (ICON_BTN_H - 28) / 2 }]}>
+                <Text style={styles.iconTooltipText}>{item.tooltip}</Text>
+              </View>
+            )}
+            <Pressable
+              onPress={() => onPressIcon?.(item.id)}
+              onLongPress={() => showTooltip(item.id)}
+              delayLongPress={400}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                item.bg ? { backgroundColor: item.bg } : null,
+                index > 0 &&
+                  !item.bg &&
+                  !icons[index - 1].bg && {
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: '#EEEEEE',
+                  },
+                pressed && styles.iconBtnPressed,
+              ]}>
+              <View style={active ? styles.iconHalo : undefined}>
+                <Icon
+                  lib={item.lib}
+                  name={item.name}
+                  size={item.id === 'tractor' ? 28 : 24}
+                  color={
+                    item.id === 'tractor' ? '#2E7D32'
+                    : active ? '#2E7D32'
+                    : (item.color ?? '#546E7A')
+                  }
+                />
+              </View>
+            </Pressable>
+          </View>
         );
       })}
     </View>
@@ -2038,7 +2059,6 @@ const styles = StyleSheet.create({
     right: 12,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    overflow: 'hidden',
     zIndex: 100,
     ...SHADOW,
   },
@@ -2048,6 +2068,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
+  },
+  iconTooltip: {
+    position: 'absolute',
+    right: 62,
+    backgroundColor: 'rgba(30,30,30,0.82)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    zIndex: 200,
+    minWidth: 80,
+  },
+  iconTooltipText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
   },
   iconBtnPressed: {
     opacity: 0.55,
