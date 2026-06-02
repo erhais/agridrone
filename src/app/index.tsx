@@ -40,12 +40,14 @@ import {
   getSemisCulture,
   getSemisDefaults,
   postFormulaireEngrais,
+  getCultures,
   helloWorld,
   type ParcelleFeature,
   type ZoneDetail,
   type ZoneDetailProperties,
   type ParcelleStats,
   type Prelevement,
+  type ReferentielItem,
 } from '../services/agridroneService';
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
@@ -873,6 +875,8 @@ export default function HomeScreen() {
   const [switchSearch, setSwitchSearch] = useState('');
   const [capturingMap, setCapturingMap] = useState(false);
   const [mapCaptureUri, setMapCaptureUri] = useState<string | null>(null);
+  const [reportCultureName, setReportCultureName] = useState<string | null>(null);
+  const [reportTeneurEngrais, setReportTeneurEngrais] = useState<string | null>(null);
   const reportRef = useRef<View>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { loading: loadingHello, execute: executeHelloWorld } = useApi(helloWorld);
@@ -1313,16 +1317,41 @@ export default function HomeScreen() {
   };
 
   const handleScreenshot = async () => {
+    // Charger culture + teneur engrais depuis l'API
+    const dbId = parcelleDbId ?? (selectedId !== null ? Number(
+      features[selectedId]?.properties?.id_parcel ??
+      features[selectedId]?.properties?.id ?? selectedId,
+    ) : null);
+
+    if (dbId !== null && selectedElement && !['S','Z'].includes(selectedElement)) {
+      // Engrais : charger formulaire pour culture + teneur
+      const formData = await getFormulaireEngrais(dbId, selectedElement);
+      if (formData) {
+        const cultures = await getCultures().catch(() => []);
+        const culture = cultures.find((c: ReferentielItem) => c.id === formData.id_culture);
+        setReportCultureName(culture?.nom ?? null);
+        setReportTeneurEngrais(formData.teneur_engrais != null ? `${formData.teneur_engrais} mg/kg` : null);
+      } else {
+        setReportCultureName(null);
+        setReportTeneurEngrais(null);
+      }
+    } else if (selectedElement === 'S') {
+      setReportCultureName(semisCultureDefinie?.nom ?? null);
+      setReportTeneurEngrais(null);
+    } else {
+      setReportCultureName(null);
+      setReportTeneurEngrais(null);
+    }
+
     if (!mapRef.current) { setReportVisible(true); return; }
     try {
-      // takeSnapshot capture la carte native directement avec la région voulue
       const region = selectedId !== null
         ? computeRegion([features[selectedId]], 1.5) ?? undefined
         : undefined;
-      const { width, height } = Dimensions.get('window');
+      const { width } = Dimensions.get('window');
       const uri = await mapRef.current.takeSnapshot({
         width,
-        height: Math.round(width * 0.75), // ratio 4:3 portrait
+        height: Math.round(width * 0.75),
         region,
         format: 'jpg',
         quality: 0.9,
@@ -2138,12 +2167,8 @@ export default function HomeScreen() {
                 ? (semisCultureDefinie?.id === 3 ? 'gr/ha' : 'kg/q')
                 : 'kg/ha'
             }
-            cultureName={semisCultureDefinie?.nom ?? (lastFormulaireData ? null : null)}
-            teneurEngrais={
-              lastFormulaireData && !['S','Z'].includes(selectedElement ?? '')
-                ? `${lastFormulaireData.teneur_engrais} mg/kg`
-                : null
-            }
+            cultureName={reportCultureName}
+            teneurEngrais={reportTeneurEngrais}
             entries={zones.length > 0 && selectedElement
               ? buildLegendEntries(zones, selectedElement).map(e => ({
                   fillColor: e.fillColor,
