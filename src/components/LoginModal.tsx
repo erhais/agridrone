@@ -75,6 +75,7 @@ export default function LoginModal({ onSuccess }: Props) {
     setError('');
     try {
       const repos = await fetchRepositories(login.trim(), password);
+      console.log('[login] repos reçus:', repos.length, repos);
       if (repos.length === 0) {
         setStep('no_repo');
         setNoRepoCountdown(5);
@@ -99,6 +100,7 @@ export default function LoginModal({ onSuccess }: Props) {
         setStep('repository');
       }
     } catch (err: unknown) {
+      console.log('[login] catch:', err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Identifiant ou mot de passe incorrect.');
       shake();
     } finally {
