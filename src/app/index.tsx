@@ -1262,10 +1262,27 @@ export default function HomeScreen() {
       await FileSystem.writeAsStringAsync(fileUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'application/zip',
-        dialogTitle: `Shapefile — ${nomParcelle}`,
-      });
+      if (Platform.OS === 'android') {
+        // SAF : sélecteur de dossier Android — inclut les clés USB OTG
+        const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (perms.granted) {
+          const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+            perms.directoryUri,
+            fileName,
+            'application/zip',
+          );
+          await FileSystem.StorageAccessFramework.writeAsStringAsync(destUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          Alert.alert('✅ Enregistré', `${fileName}\nsauvegardé dans le dossier sélectionné.`);
+        }
+        // Si l'utilisateur annule la sélection → rien
+      } else {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/zip',
+          dialogTitle: `Shapefile — ${nomParcelle}`,
+        });
+      }
     } catch (err: unknown) {
       Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible de générer le shapefile');
     } finally {
