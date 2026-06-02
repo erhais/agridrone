@@ -171,9 +171,9 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
   { id: 'logout',     lib: 'ion', name: 'log-out-outline',       tooltip: 'Déconnexion' },
   { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',      tooltip: 'Me localiser' },
+  { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
   { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline',      tooltip: 'Étiquettes doses' },
   { id: 'attributs',  lib: 'ion', name: 'create-outline',        tooltip: 'Éditer les zones' },
@@ -1696,13 +1696,13 @@ export default function HomeScreen() {
           editActive={editZoneMode}
           geolocateActive={isGeolocating}
           visibleIds={[
-            'screenshot',
             'logout',
             'geolocate',
+            ...(zones.length > 0 ? ['screenshot'] : []),
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
             ...(zones.length > 0 ? ['doses', 'attributs'] : []),
-            ...(selectedElement !== 'Z' ? ['formulaire'] : []),
+            ...(zones.length > 0 && selectedElement !== 'Z' ? ['formulaire'] : []),
           ]}
         />
       </Animated.View>
