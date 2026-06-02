@@ -1332,6 +1332,7 @@ export default function HomeScreen() {
         }
       }
     } catch (e) {
+      console.error('[report] capture error:', e);
       setReportVisible(false);
       Alert.alert('Erreur', 'Impossible de sauvegarder le rapport.');
     }
