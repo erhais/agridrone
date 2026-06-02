@@ -12,6 +12,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { captureRef, captureScreen } from 'react-native-view-shot';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -1299,18 +1300,31 @@ export default function HomeScreen() {
       const nomParcelle = selectedId !== null
         ? (features[selectedId]?.properties?.nom_parcel ?? 'parcelle')
         : 'rapport';
-      const fileName = `${nomParcelle}_${new Date().toISOString().slice(0, 10)}.jpg`;
-      const dest = (FileSystem.documentDirectory ?? '') + fileName;
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      setReportVisible(false);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(dest, { mimeType: 'image/jpeg', dialogTitle: fileName });
+      const fileName = `AgriDrone_${nomParcelle}_${new Date().toISOString().slice(0, 10)}.jpg`;
+      // Demander permission galerie et sauvegarder
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status === 'granted') {
+        const asset = await MediaLibrary.createAssetAsync(uri);
+        // Dossier AgriDrone dans la galerie
+        let album = await MediaLibrary.getAlbumAsync('AgriDrone');
+        if (!album) album = await MediaLibrary.createAlbumAsync('AgriDrone', asset, false);
+        else await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+        setReportVisible(false);
+        Alert.alert('✅ Enregistré', `Image sauvegardée dans la galerie\n(album AgriDrone)`);
       } else {
-        Alert.alert('Rapport', `Image sauvegardée : ${fileName}`);
+        // Fallback partage système
+        const dest = (FileSystem.documentDirectory ?? '') + fileName;
+        await FileSystem.copyAsync({ from: uri, to: dest });
+        setReportVisible(false);
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(dest, { mimeType: 'image/jpeg', dialogTitle: fileName });
+        } else {
+          Alert.alert('Rapport', `Fichier : ${fileName}`);
+        }
       }
-    } catch {
+    } catch (e) {
       setReportVisible(false);
-      Alert.alert('Erreur', 'Impossible de générer le rapport.');
+      Alert.alert('Erreur', 'Impossible de sauvegarder le rapport.');
     }
   };
 
@@ -2021,6 +2035,12 @@ export default function HomeScreen() {
       {/* ── Modal rapport ──────────────────────────────────────────────── */}
       <Modal visible={reportVisible} transparent animationType="fade" onRequestClose={() => setReportVisible(false)}>
         <View style={styles.reportModalBg}>
+          <ScrollView
+            style={styles.reportScroll}
+            contentContainerStyle={{ alignItems: 'center' }}
+            showsVerticalScrollIndicator={false}
+            bounces={false}>
+            <View style={styles.reportCardScale}>
           <ReportCard
             ref={reportRef}
             parcelleName={
@@ -2058,10 +2078,12 @@ export default function HomeScreen() {
             year={new Date().getFullYear()}
             mapUri={mapCaptureUri}
           />
+            </View>{/* reportCardScale */}
+          </ScrollView>
           <View style={styles.reportModalBtns}>
             <Pressable style={styles.reportBtnShare} onPress={() => { void handleCaptureReport(); }}>
-              <Ionicons name="share-outline" size={18} color="#fff" />
-              <Text style={styles.reportBtnShareText}>Partager</Text>
+              <Ionicons name="save-outline" size={18} color="#fff" />
+              <Text style={styles.reportBtnShareText}>Enregistrer</Text>
             </Pressable>
             <Pressable style={styles.reportBtnClose} onPress={() => setReportVisible(false)}>
               <Text style={styles.reportBtnCloseText}>Fermer</Text>
@@ -2338,7 +2360,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+  },
+  reportScroll: {
+    maxHeight: '78%',
+    width: '100%',
+  },
+  reportCardScale: {
+    transform: [{ scale: 0.82 }],
+    transformOrigin: 'top center',
   },
   reportModalBtns: {
     flexDirection: 'row',
