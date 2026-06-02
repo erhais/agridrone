@@ -1226,26 +1226,6 @@ export default function HomeScreen() {
     formValuesValid &&
     legendEntries.every(e => e.dose !== null && e.dose >= 0);
 
-  // Détecte une clé USB OTG Android (montée dans /storage/ hors "emulated" et "self")
-  const detectUsbDrive = async (): Promise<string | null> => {
-    if (Platform.OS !== 'android') return null;
-    try {
-      const storageDir = await FileSystem.readDirectoryAsync('file:///storage/');
-      console.log('[USB] /storage/ contient:', storageDir);
-      const usbCandidates = storageDir.filter(
-        name => name !== 'emulated' && name !== 'self',
-      );
-      console.log('[USB] candidats:', usbCandidates);
-      if (usbCandidates.length === 0) return null;
-      const usbMount = `file:///storage/${usbCandidates[0]}`;
-      const info = await FileSystem.getInfoAsync(usbMount);
-      console.log('[USB] mount:', usbMount, '| exists:', info.exists);
-      return info.exists ? usbMount : null;
-    } catch (e) {
-      console.log('[USB] erreur:', e);
-      return null;
-    }
-  };
 
   const handleTractorPress = async () => {
     if (selectedId === null) {
@@ -1282,43 +1262,10 @@ export default function HomeScreen() {
       await FileSystem.writeAsStringAsync(fileUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      // Détection clé USB OTG (Android : montée dans /storage/XXXX-YYYY/)
-      const usbPath = await detectUsbDrive();
-      if (usbPath) {
-        Alert.alert(
-          '💾 Clé USB détectée',
-          `Voulez-vous enregistrer le shapefile sur la clé USB ?`,
-          [
-            {
-              text: 'Clé USB',
-              onPress: async () => {
-                try {
-                  const usbFile = `${usbPath}/${fileName}`;
-                  await FileSystem.copyAsync({ from: fileUri, to: usbFile });
-                  Alert.alert('✅ Enregistré', `Fichier sauvegardé sur la clé USB :\n${fileName}`);
-                } catch {
-                  Alert.alert('Erreur', 'Impossible d\'écrire sur la clé USB.\nUtilisation du partage système.');
-                  await Sharing.shareAsync(fileUri, { mimeType: 'application/zip', dialogTitle: `Shapefile — ${nomParcelle}` });
-                }
-              },
-            },
-            {
-              text: 'Partager',
-              onPress: async () => {
-                await Sharing.shareAsync(fileUri, { mimeType: 'application/zip', dialogTitle: `Shapefile — ${nomParcelle}` });
-              },
-            },
-            { text: 'Annuler', style: 'cancel' },
-          ],
-        );
-      } else {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(fileUri, { mimeType: 'application/zip', dialogTitle: `Shapefile — ${nomParcelle}` });
-        } else {
-          Alert.alert('Succès', `Fichier sauvegardé : ${fileName}`);
-        }
-      }
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/zip',
+        dialogTitle: `Shapefile — ${nomParcelle}`,
+      });
     } catch (err: unknown) {
       Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible de générer le shapefile');
     } finally {
