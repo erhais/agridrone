@@ -132,15 +132,9 @@ const ReportCard = forwardRef<View, ReportProps>(({
           <View style={styles.divider} />
           <View style={styles.statsGrid}>
             {stats.superficie > 0 && (
-              <View style={styles.statItem}>
-                <Text style={styles.statVal}>{stats.superficie.toFixed(2)} ha</Text>
-                <Text style={styles.statLbl}>Superficie</Text>
-              </View>
-            )}
-            {stats.nombre_zones > 0 && (
-              <View style={styles.statItem}>
-                <Text style={styles.statVal}>{stats.nombre_zones}</Text>
-                <Text style={styles.statLbl}>Zones</Text>
+              <View style={[styles.statItem, styles.statItemSmall]}>
+                <Text style={styles.statVal}>{stats.superficie.toFixed(2)}</Text>
+                <Text style={styles.statLbl}>Superficie (ha)</Text>
               </View>
             )}
             {stats.dose_moyenne != null && (
@@ -207,10 +201,11 @@ const styles = StyleSheet.create({
   tdCell:      { fontSize: 11, color: '#333' },
   tdNum:       { width: 56, textAlign: 'right', fontSize: 11, color: '#333' },
 
-  statsGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
-  statItem:    { alignItems: 'center', backgroundColor: '#F0F7E8', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, minWidth: 80 },
-  statVal:     { fontSize: 15, fontWeight: '800', color: '#2E6B1A', textAlign: 'center' },
-  statLbl:     { fontSize: 9, color: '#666', marginTop: 2, textAlign: 'center' },
+  statsGrid:   { flexDirection: 'row', flexWrap: 'nowrap', gap: 6, marginTop: 2 },
+  statItem:      { flex: 2, alignItems: 'center', backgroundColor: '#F0F7E8', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 8 },
+  statItemSmall: { flex: 1 },
+  statVal:     { fontSize: 13, fontWeight: '800', color: '#2E6B1A', textAlign: 'center' },
+  statLbl:     { fontSize: 8, color: '#666', marginTop: 2, textAlign: 'center' },
 
   mapImg:            { width: '100%', aspectRatio: 4/3, borderRadius: 6, marginVertical: 10, backgroundColor: '#F0F0F0' },
   mapImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
