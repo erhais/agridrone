@@ -65,7 +65,7 @@ const ReportCard = forwardRef<View, ReportProps>(({
         <Text style={styles.infoValue}>
           {elementLabel}
           {!!teneurEngrais
-            ? <Text><Text style={styles.infoNormal}>{' — Teneur : '}</Text>{teneurEngrais}</Text>
+            ? <Text><Text style={styles.infoNormal}>{' — Teneur : '}</Text>{teneurEngrais}<Text style={styles.infoValueBoldUnit}>%</Text></Text>
             : ''}
         </Text>
       </View>
@@ -80,7 +80,7 @@ const ReportCard = forwardRef<View, ReportProps>(({
             {!!objRendement && (
               <Text>
                 <Text style={styles.infoNormal}>{'Obj. Rend. : '}</Text>
-                <Text style={styles.infoValueBold}>{objRendement}<Text style={styles.infoValueBoldUnit}>%</Text></Text>
+                <Text style={styles.infoValueBold}>{objRendement}</Text>
               </Text>
             )}
           </Text>
