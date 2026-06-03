@@ -8,7 +8,7 @@
     "scheme": "appagridrone",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "fr.agridrone.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
