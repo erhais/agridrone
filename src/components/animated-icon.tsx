@@ -11,37 +11,57 @@ export function AnimatedSplashOverlay() {
 
   if (!visible) return null;
 
-  const splashKeyframe = new Keyframe({
-    0: {
-      transform: [{ scale: INITIAL_SCALE_FACTOR }],
-      opacity: 1,
-    },
-    20: {
-      opacity: 1,
-    },
-    70: {
-      opacity: 0,
-      easing: Easing.elastic(0.7),
-    },
-    100: {
-      opacity: 0,
-      transform: [{ scale: 1 }],
-      easing: Easing.elastic(0.7),
-    },
+  const fadeOut = new Keyframe({
+    0:   { opacity: 1 },
+    60:  { opacity: 1 },
+    100: { opacity: 0 },
   });
 
   return (
     <Animated.View
-      entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
+      entering={fadeOut.duration(1800).withCallback((finished) => {
         'worklet';
-        if (finished) {
-          runOnJS(setVisible)(false);
-        }
+        if (finished) runOnJS(setVisible)(false);
       })}
-      style={styles.backgroundSolidColor}
-    />
+      style={splashStyles.container}>
+      <Image
+        source={require('@/assets/images/icon.png')}
+        style={splashStyles.icon}
+        contentFit="contain"
+      />
+      <Animated.Text style={splashStyles.title}>AGRIDRONE</Animated.Text>
+      <Animated.Text style={splashStyles.subtitle}>Cartographie & zonage de parcelles</Animated.Text>
+    </Animated.View>
   );
 }
+
+const splashStyles = StyleSheet.create({
+  container: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#2B5F6E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  icon: {
+    width: 180,
+    height: 180,
+    borderRadius: 36,
+  },
+  title: {
+    marginTop: 24,
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 6,
+  },
+  subtitle: {
+    marginTop: 8,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 0.5,
+  },
+});
 
 const keyframe = new Keyframe({
   0: {
