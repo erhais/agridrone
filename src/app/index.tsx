@@ -1057,6 +1057,7 @@ export default function HomeScreen() {
           setParcelleStats(data.stats);
           setParcelleDbId(data.parcelle.id);
           setPrelevements(data['prélevements'] ?? []);
+          console.log('[parcelle] données BO:', JSON.stringify(data.parcelle));
           const editeur = data.parcelle.is_editeur ?? false;
           const carte = data.parcelle.carte ?? 0;
           setIsEditeur(editeur);
