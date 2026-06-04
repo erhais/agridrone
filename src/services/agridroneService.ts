@@ -157,7 +157,7 @@ export interface ReferentielItem {
 
 export interface TypeSolItem {
   id: number;
-  libelle: string;
+  nom: string;
 }
 
 export async function getTypeSol(carte: number): Promise<TypeSolItem[]> {

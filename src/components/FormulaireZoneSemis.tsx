@@ -312,7 +312,7 @@ export default function FormulaireZoneSemis({
                       itemStyle={styles.pickerItem}>
                       <Picker.Item label="— Sélectionner —" value={null} />
                       {typeSols.map(t => (
-                        <Picker.Item key={t.id} label={t.libelle} value={t.id} />
+                        <Picker.Item key={t.id} label={t.nom} value={t.id} />
                       ))}
                     </Picker>
                   </View>

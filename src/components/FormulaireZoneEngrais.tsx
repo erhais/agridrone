@@ -192,7 +192,6 @@ export default function FormulaireZoneEngrais({
   const element = zone.properties.element ?? 'P';
   const elementLabel = ELEMENT_LABELS[element] ?? element;
   const sectionColor = zone.style?.fillColor ?? '#3B6D11';
-  console.log('[zone-form] isEditeur:', isEditeur, '| typeSols:', typeSols.length, '| element:', zone.properties.element);
 
   return (
     <Animated.View
@@ -249,7 +248,7 @@ export default function FormulaireZoneEngrais({
                       itemStyle={styles.pickerItem}>
                       <Picker.Item label="— Sélectionner —" value={null} />
                       {typeSols.map(t => (
-                        <Picker.Item key={t.id} label={t.libelle} value={t.id} />
+                        <Picker.Item key={t.id} label={t.nom} value={t.id} />
                       ))}
                     </Picker>
                   </View>
