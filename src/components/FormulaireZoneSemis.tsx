@@ -190,7 +190,11 @@ export default function FormulaireZoneSemis({
     setTxPierre(p.tx_pierre != null ? Math.min(SLIDER_MAX, Math.round(Number(p.tx_pierre))) : 0);
     setDose(p.dose != null ? formatDose(Number(p.dose)) : '');
     setPersoDose(false);
-    setSelectedTypeSol((p.id_type_sol as number | null) ?? null);
+    setSelectedTypeSol(
+      (p.id_type_sol as number | null)
+      ?? typeSols.find(t => t.nom === p.label)?.id
+      ?? null,
+    );
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
     Animated.timing(slideAnim, {
@@ -198,7 +202,7 @@ export default function FormulaireZoneSemis({
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
     }).start();
-  }, [visible, zone]);
+  }, [visible, zone, typeSols]);
 
   const close = () => {
     Keyboard.dismiss();

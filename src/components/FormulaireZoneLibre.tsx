@@ -64,7 +64,11 @@ export default function FormulaireZoneLibre({
   useEffect(() => {
     if (!visible) return;
     setDose(zone.properties.dose != null ? String(zone.properties.dose) : '');
-    setSelectedTypeSol((zone.properties.id_type_sol as number | null) ?? null);
+    setSelectedTypeSol(
+      (zone.properties.id_type_sol as number | null)
+      ?? typeSols.find(t => t.nom === zone.properties.label)?.id
+      ?? null,
+    );
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
     Animated.timing(slideAnim, {
@@ -72,7 +76,7 @@ export default function FormulaireZoneLibre({
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
     }).start();
-  }, [visible, zone]);
+  }, [visible, zone, typeSols]);
 
   const close = () => {
     Keyboard.dismiss();

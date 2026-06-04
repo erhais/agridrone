@@ -120,7 +120,9 @@ export default function FormulaireZoneEngrais({
     setRendement(rend);
     setPersoRendement(false);
     setPersoDose(false);
-    const idTypeSol = (p.id_type_sol as number | null) ?? null;
+    const idTypeSol = (p.id_type_sol as number | null)
+      ?? typeSols.find(t => t.nom === p.label)?.id
+      ?? null;
     setSelectedTypeSol(idTypeSol);
 
     slideAnim.setValue(SHEET_H);
@@ -130,7 +132,7 @@ export default function FormulaireZoneEngrais({
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
     }).start();
-  }, [visible, zone]);
+  }, [visible, zone, typeSols]);
 
   const close = () => {
     Keyboard.dismiss();
