@@ -1060,10 +1060,13 @@ export default function HomeScreen() {
           console.log('[parcelle] données BO:', JSON.stringify(data.parcelle));
           const editeur = data.parcelle.is_editeur ?? false;
           const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
+          console.log('[editeur] is_editeur:', editeur, '| carte:', carte);
           setIsEditeur(editeur);
           setCarteValue(carte);
           if (editeur) {
-            getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
+            getTypeSol(carte)
+              .then(sols => { console.log('[editeur] typeSols:', sols.length, sols); setTypeSols(sols); })
+              .catch(e => { console.log('[editeur] typeSols erreur:', e); setTypeSols([]); });
           } else {
             setTypeSols([]);
           }
