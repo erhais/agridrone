@@ -1065,7 +1065,7 @@ export default function HomeScreen() {
           setCarteValue(carte);
           if (editeur) {
             getTypeSol(carte)
-              .then(sols => { console.log('[editeur] typeSols:', sols.length, sols); setTypeSols(sols); })
+              .then(sols => { console.log('[editeur] typeSol[0]:', JSON.stringify(sols[0])); setTypeSols(sols); })
               .catch(e => { console.log('[editeur] typeSols erreur:', e); setTypeSols([]); });
           } else {
             setTypeSols([]);
