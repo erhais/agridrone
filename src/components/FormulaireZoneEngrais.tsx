@@ -239,7 +239,8 @@ export default function FormulaireZoneEngrais({
 
               <View style={styles.field}>
                 <Text style={styles.label}>Nature du sol</Text>
-                {isEditeur && typeSols.length > 0 ? (
+                {isEditeur && typeSols.length > 0 &&
+                 (!zone.properties.element || String(zone.properties.element) === '0') ? (
                   <View style={styles.pickerWrapper}>
                     <Picker
                       selectedValue={selectedTypeSol}

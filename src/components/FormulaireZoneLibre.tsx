@@ -29,6 +29,7 @@ interface ZoneProps {
     surface?: number;
     dose?: number | null;
     id_class?: number | null;
+    element?: string | number | null;
     [key: string]: unknown;
   };
   style?: { fillColor?: string };
@@ -155,7 +156,8 @@ export default function FormulaireZoneLibre({
             {/* Infos zone */}
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Type de sol</Text>
-              {isEditeur && typeSols.length > 0 ? (
+              {isEditeur && typeSols.length > 0 &&
+               (!zone.properties.element || String(zone.properties.element) === '0') ? (
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={selectedTypeSol}
