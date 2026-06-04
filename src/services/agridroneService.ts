@@ -123,6 +123,8 @@ export interface ParcelleInfo {
   id: number;
   nom: string;
   superficie_totale: number;
+  is_editeur?: boolean;
+  carte?: number;
 }
 
 export interface ParcelleStats {
@@ -150,6 +152,21 @@ export interface ReferentielItem {
   id: number;
   nom: string;
   unite?: string;
+}
+
+export interface TypeSolItem {
+  id: number;
+  libelle: string;
+}
+
+export async function getTypeSol(carte: number): Promise<TypeSolItem[]> {
+  try {
+    return await apiService.get<TypeSolItem[]>(
+      `/api/v1/referentiel/type-sol?carte=${encodeURIComponent(carte)}`,
+    );
+  } catch {
+    return [];
+  }
 }
 
 export async function getCultures(): Promise<ReferentielItem[]> {
@@ -208,6 +225,7 @@ export interface ZoneSemisPatch {
   tx_pierre: number;
   dose?: number | null;
   perso_dose: boolean;
+  id_type_sol?: number | null;
 }
 
 export async function patchZoneSemis(
@@ -224,6 +242,7 @@ export async function patchZoneSemis(
 export interface EngraisZonePatch {
   rendement?: number | null;
   dose?: number | null;
+  id_type_sol?: number | null;
 }
 
 export async function patchZoneEngrais(

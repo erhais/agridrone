@@ -41,6 +41,7 @@ import {
   getSemisDefaults,
   postFormulaireEngrais,
   getCultures,
+  getTypeSol,
   helloWorld,
   type ParcelleFeature,
   type ZoneDetail,
@@ -48,6 +49,7 @@ import {
   type ParcelleStats,
   type Prelevement,
   type ReferentielItem,
+  type TypeSolItem,
 } from '../services/agridroneService';
 import { apiService } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
@@ -888,6 +890,9 @@ export default function HomeScreen() {
   const [zones, setZones] = useState<ZoneDetail[]>([]);
   const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
   const [parcelleDbId, setParcelleDbId] = useState<number | null>(null);
+  const [isEditeur, setIsEditeur] = useState(false);
+  const [carteValue, setCarteValue] = useState(0);
+  const [typeSols, setTypeSols] = useState<import('../services/agridroneService').TypeSolItem[]>([]);
   const [formulaireId, setFormulaireId] = useState<number | null>(null);
   const [lastFormulaireData, setLastFormulaireData] = useState<FormulaireData | null>(null);
   const [loadingFormulaire, setLoadingFormulaire] = useState(false);
@@ -1052,6 +1057,15 @@ export default function HomeScreen() {
           setParcelleStats(data.stats);
           setParcelleDbId(data.parcelle.id);
           setPrelevements(data['prélevements'] ?? []);
+          const editeur = data.parcelle.is_editeur ?? false;
+          const carte = data.parcelle.carte ?? 0;
+          setIsEditeur(editeur);
+          setCarteValue(carte);
+          if (editeur) {
+            getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
+          } else {
+            setTypeSols([]);
+          }
         }
       })
       .catch((err: unknown) => {
@@ -1843,6 +1857,8 @@ export default function HomeScreen() {
           initialDetail={zoneEngraisDetail}
           allowDosageManuel={zoneAllowDosage}
           allowRendementSpec={zoneAllowRendement}
+          isEditeur={isEditeur}
+          typeSols={typeSols}
           onClose={() => { setZoneFormVisible(false); setSelectedZoneIdx(null); }}
           onRecopie={() => {
             setZoneFormVisible(false);
@@ -1852,10 +1868,11 @@ export default function HomeScreen() {
             const fert = selectedElement ?? 'P';
             const rendVal = data.perso_rendement && data.rendement > 0 ? data.rendement : null;
             const doseVal = data.perso_dose && data.dose >= 0 ? data.dose : null;
-            if (rendVal !== null || doseVal !== null) {
+            if (rendVal !== null || doseVal !== null || data.id_type_sol != null) {
               await patchZoneEngrais(data.num_zone, fert, {
                 rendement: rendVal,
                 dose: doseVal,
+                id_type_sol: data.id_type_sol,
               });
             }
             setZoneFormVisible(false);
@@ -1902,6 +1919,8 @@ export default function HomeScreen() {
             nom: features[selectedId]?.properties?.nom_parcel ?? 'Parcelle',
           }}
           fertilisant={zoneLibreFertilisant}
+          isEditeur={isEditeur}
+          typeSols={typeSols}
           onClose={() => { setZoneLibreFormVisible(false); setSelectedZoneIdx(null); }}
           onSave={() => {
             setZoneLibreFormVisible(false);
@@ -1943,6 +1962,8 @@ export default function HomeScreen() {
           }}
           culture={semisCultureDefinie}
           allowDosageManuel={zoneEngraisDetail?.allow_dosage_manuel === 1}
+          isEditeur={isEditeur}
+          typeSols={typeSols}
           onClose={() => { setZoneSemisFormVisible(false); setSelectedZoneIdx(null); }}
           onSave={() => {
             setZoneSemisFormVisible(false);

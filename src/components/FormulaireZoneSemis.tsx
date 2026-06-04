@@ -17,11 +17,13 @@ import {
   View,
 } from 'react-native';
 import { ApiError } from '../services/api';
+import { Picker } from '@react-native-picker/picker';
 import {
   getPierreReferentiel,
   getPierreCoef,
   patchZoneSemis,
   type PierreReferentielItem,
+  type TypeSolItem,
 } from '../services/agridroneService';
 
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
@@ -144,22 +146,27 @@ interface Props {
   parcelle: { id: number; nom: string };
   culture: { id: number; nom: string };
   allowDosageManuel?: boolean;
+  isEditeur?: boolean;
+  typeSols?: TypeSolItem[];
   onClose: () => void;
   onSave: () => void;
 }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 export default function FormulaireZoneSemis({
-  visible, zone, parcelle, culture, allowDosageManuel = false, onClose, onSave,
+  visible, zone, parcelle, culture, allowDosageManuel = false,
+  isEditeur = false, typeSols = [],
+  onClose, onSave,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(SHEET_H)).current;
   const panY      = useRef(new Animated.Value(0)).current;
-  const [saving,       setSaving]       = useState(false);
-  const [txPierre,     setTxPierre]     = useState(0);
-  const [persoDose,    setPersoDose]    = useState(false);
-  const [dose,         setDose]         = useState('');
-  const [doseBase,     setDoseBase]     = useState<number | null>(null);
-  const [pierreRef,    setPierreRef]    = useState<PierreReferentielItem[]>([]);
+  const [saving,         setSaving]       = useState(false);
+  const [txPierre,       setTxPierre]     = useState(0);
+  const [persoDose,      setPersoDose]    = useState(false);
+  const [dose,           setDose]         = useState('');
+  const [doseBase,       setDoseBase]     = useState<number | null>(null);
+  const [pierreRef,      setPierreRef]    = useState<PierreReferentielItem[]>([]);
+  const [selectedTypeSol, setSelectedTypeSol] = useState<number | null>(null);
 
   // Charger référentiel pierre une seule fois
   useEffect(() => {
@@ -182,6 +189,7 @@ export default function FormulaireZoneSemis({
     setTxPierre(p.tx_pierre != null ? Math.min(SLIDER_MAX, Math.round(Number(p.tx_pierre))) : 0);
     setDose(p.dose != null ? formatDose(Number(p.dose)) : '');
     setPersoDose(false);
+    setSelectedTypeSol((p.id_type_sol as number | null) ?? null);
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
     Animated.timing(slideAnim, {
@@ -219,6 +227,7 @@ export default function FormulaireZoneSemis({
         tx_pierre: txPierre,
         ...(persoDose ? { dose: parseFloat(dose) || 0 } : {}),
         perso_dose: persoDose,
+        ...(isEditeur && selectedTypeSol != null ? { id_type_sol: selectedTypeSol } : {}),
       });
       close();
       setTimeout(() => onSave(), 350);
@@ -292,11 +301,26 @@ export default function FormulaireZoneSemis({
 
               <View style={styles.field}>
                 <Text style={styles.label}>Nature du sol</Text>
-                <View style={styles.readonlyBox}>
-                  <Text style={styles.readonlyText}>
-                    {zone.properties.label ?? '—'}
-                  </Text>
-                </View>
+                {isEditeur && typeSols.length > 0 ? (
+                  <View style={styles.pickerWrapper}>
+                    <Picker
+                      selectedValue={selectedTypeSol}
+                      onValueChange={v => setSelectedTypeSol(v as number | null)}
+                      style={styles.picker}
+                      itemStyle={styles.pickerItem}>
+                      <Picker.Item label="— Sélectionner —" value={null} />
+                      {typeSols.map(t => (
+                        <Picker.Item key={t.id} label={t.libelle} value={t.id} />
+                      ))}
+                    </Picker>
+                  </View>
+                ) : (
+                  <View style={styles.readonlyBox}>
+                    <Text style={styles.readonlyText}>
+                      {zone.properties.label ?? '—'}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -420,7 +444,10 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 10,
     justifyContent: 'center', backgroundColor: '#E8E8E8',
   },
-  readonlyText:  { fontSize: 13, color: '#666' },
+  readonlyText:   { fontSize: 13, color: '#666' },
+  pickerWrapper:  { borderWidth: 1, borderColor: '#D0D0D0', borderRadius: 8, backgroundColor: '#FAFAFA' },
+  picker:         { color: '#333', width: '100%' },
+  pickerItem:     { fontSize: 13, color: '#333' },
   checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkBox: {
     width: 20, height: 20, borderRadius: 4,

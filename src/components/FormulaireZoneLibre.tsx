@@ -15,8 +15,9 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { ApiError } from '../services/api';
-import { patchZoneSemis } from '../services/agridroneService';
+import { patchZoneSemis, type TypeSolItem } from '../services/agridroneService';
 
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.55;
@@ -37,7 +38,9 @@ interface Props {
   visible: boolean;
   zone: ZoneProps;
   parcelle: { id: number; nom: string };
-  fertilisant?: string;  // 'SL' | 'Z' | ...
+  fertilisant?: string;
+  isEditeur?: boolean;
+  typeSols?: TypeSolItem[];
   onClose: () => void;
   onSave: () => void;
 }
@@ -47,16 +50,20 @@ const FERTILISANT_LABELS: Record<string, string> = {
 };
 
 export default function FormulaireZoneLibre({
-  visible, zone, parcelle, fertilisant = 'Z', onClose, onSave,
+  visible, zone, parcelle, fertilisant = 'Z',
+  isEditeur = false, typeSols = [],
+  onClose, onSave,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(SHEET_H)).current;
   const panY      = useRef(new Animated.Value(0)).current;
-  const [dose,    setDose]    = useState('');
-  const [saving,  setSaving]  = useState(false);
+  const [dose,           setDose]          = useState('');
+  const [saving,         setSaving]        = useState(false);
+  const [selectedTypeSol, setSelectedTypeSol] = useState<number | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setDose(zone.properties.dose != null ? String(zone.properties.dose) : '');
+    setSelectedTypeSol((zone.properties.id_type_sol as number | null) ?? null);
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
     Animated.timing(slideAnim, {
@@ -97,6 +104,7 @@ export default function FormulaireZoneLibre({
         tx_pierre: 0,
         dose: doseVal,
         perso_dose: true,
+        ...(isEditeur && selectedTypeSol != null ? { id_type_sol: selectedTypeSol } : {}),
       }, fertilisant);
       close();
       setTimeout(() => onSave(), 350);
@@ -147,7 +155,22 @@ export default function FormulaireZoneLibre({
             {/* Infos zone */}
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Type de sol</Text>
-              <Text style={styles.infoValue}>{zone.properties.label ?? '—'}</Text>
+              {isEditeur && typeSols.length > 0 ? (
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={selectedTypeSol}
+                    onValueChange={v => setSelectedTypeSol(v as number | null)}
+                    style={styles.picker}
+                    itemStyle={styles.pickerItem}>
+                    <Picker.Item label="— Sélectionner —" value={null} />
+                    {typeSols.map(t => (
+                      <Picker.Item key={t.id} label={t.libelle} value={t.id} />
+                    ))}
+                  </Picker>
+                </View>
+              ) : (
+                <Text style={styles.infoValue}>{zone.properties.label ?? '—'}</Text>
+              )}
             </View>
             <View style={styles.separator} />
             <View style={styles.infoRow}>
@@ -243,8 +266,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   separator:  { height: StyleSheet.hairlineWidth, backgroundColor: '#E0E0E0' },
-  infoLabel:  { fontSize: 13, color: '#666' },
-  infoValue:  { fontSize: 13, fontWeight: '600', color: '#222', flex: 1, textAlign: 'right' },
+  infoLabel:     { fontSize: 13, color: '#666' },
+  infoValue:     { fontSize: 13, fontWeight: '600', color: '#222', flex: 1, textAlign: 'right' },
+  pickerWrapper: { flex: 1, borderWidth: 1, borderColor: '#D0D0D0', borderRadius: 8, backgroundColor: '#FAFAFA' },
+  picker:        { color: '#333', width: '100%' },
+  pickerItem:    { fontSize: 13, color: '#333' },
 
   doseSection: {
     marginHorizontal: 16,

@@ -16,9 +16,10 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { ApiError } from '../services/api';
 import { apiService } from '../services/api';
-import { type EngraisZoneDetail } from '../services/agridroneService';
+import { type EngraisZoneDetail, type TypeSolItem } from '../services/agridroneService';
 
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.9;
@@ -50,6 +51,7 @@ export interface ZoneEngraisData {
   ph: number;
   dose: number;
   perso_dose: boolean;
+  id_type_sol?: number | null;
 }
 
 interface ZoneProps {
@@ -75,8 +77,10 @@ interface Props {
   parcelle: { id: number; nom: string };
   rendementGlobal?: number;
   initialDetail?: EngraisZoneDetail | null;
-  allowDosageManuel?: boolean;      // dosage_manuel_zone du formulaire parcelle
-  allowRendementSpec?: boolean;     // rendement_specifique_zone du formulaire parcelle
+  allowDosageManuel?: boolean;
+  allowRendementSpec?: boolean;
+  isEditeur?: boolean;
+  typeSols?: TypeSolItem[];
   onClose: () => void;
   onSave: (data: ZoneEngraisData) => Promise<void>;
   onRecopie?: () => void;
@@ -86,6 +90,7 @@ interface Props {
 export default function FormulaireZoneEngrais({
   visible, zone, parcelle, rendementGlobal, initialDetail,
   allowDosageManuel = true, allowRendementSpec = true,
+  isEditeur = false, typeSols = [],
   onClose, onSave, onRecopie,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(SHEET_H)).current;
@@ -99,6 +104,7 @@ export default function FormulaireZoneEngrais({
   const [rendement,      setRendement]      = useState('');
   const [persoDose,      setPersoDose]      = useState(false);
   const [dose,           setDose]           = useState('');
+  const [selectedTypeSol, setSelectedTypeSol] = useState<number | null>(null);
 
   // Init : priorité initialDetail (API zone), fallback properties zone
   useEffect(() => {
@@ -112,9 +118,10 @@ export default function FormulaireZoneEngrais({
       : rendementGlobal != null ? String(rendementGlobal)
       : p.rendement != null ? String(p.rendement) : '';
     setRendement(rend);
-    // Toujours démarrer en lecture seule — l'utilisateur coche pour modifier
     setPersoRendement(false);
     setPersoDose(false);
+    const idTypeSol = (p.id_type_sol as number | null) ?? null;
+    setSelectedTypeSol(idTypeSol);
 
     slideAnim.setValue(SHEET_H);
     panY.setValue(0);
@@ -160,6 +167,7 @@ export default function FormulaireZoneEngrais({
         ph: parseFloat(ph) || 0,
         dose: parseFloat(dose) || 0,
         perso_dose: persoDose,
+        id_type_sol: isEditeur ? selectedTypeSol : undefined,
       });
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message
@@ -231,11 +239,26 @@ export default function FormulaireZoneEngrais({
 
               <View style={styles.field}>
                 <Text style={styles.label}>Nature du sol</Text>
-                <View style={styles.readonlyBox}>
-                  <Text style={styles.readonlyText}>
-                    {zone.properties.label ?? '—'}
-                  </Text>
-                </View>
+                {isEditeur && typeSols.length > 0 ? (
+                  <View style={styles.pickerWrapper}>
+                    <Picker
+                      selectedValue={selectedTypeSol}
+                      onValueChange={v => setSelectedTypeSol(v as number | null)}
+                      style={styles.picker}
+                      itemStyle={styles.pickerItem}>
+                      <Picker.Item label="— Sélectionner —" value={null} />
+                      {typeSols.map(t => (
+                        <Picker.Item key={t.id} label={t.libelle} value={t.id} />
+                      ))}
+                    </Picker>
+                  </View>
+                ) : (
+                  <View style={styles.readonlyBox}>
+                    <Text style={styles.readonlyText}>
+                      {zone.properties.label ?? '—'}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Teneur + pH sur la même ligne */}
@@ -416,6 +439,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center', backgroundColor: '#E8E8E8',
   },
   readonlyText:  { fontSize: 13, color: '#666' },
+  pickerWrapper: { borderWidth: 1, borderColor: '#D0D0D0', borderRadius: 8, backgroundColor: '#FAFAFA' },
+  picker:        { color: '#333', width: '100%' },
+  pickerItem:    { fontSize: 13, color: '#333' },
   checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkBox: {
     width: 20, height: 20, borderRadius: 4,
