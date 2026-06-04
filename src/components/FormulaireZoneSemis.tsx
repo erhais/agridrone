@@ -311,6 +311,7 @@ export default function FormulaireZoneSemis({
                   <View style={styles.pickerWrapper}>
                     <Picker
                       selectedValue={selectedTypeSol}
+                      mode="dropdown"
                       onValueChange={v => setSelectedTypeSol(v as number | null)}
                       style={styles.picker}
                       itemStyle={styles.pickerItem}>
