@@ -146,6 +146,7 @@ export interface ParcelleDetails {
   zones: ZoneDetail[];
   stats: ParcelleStats;
   'prélevements'?: Prelevement[];
+  is_editeur?: boolean;
 }
 
 export interface ReferentielItem {
