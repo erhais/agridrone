@@ -1630,6 +1630,7 @@ export default function HomeScreen() {
                   const numZone = zone.num_zone ?? (zi + 1);
                   const fert = selectedElement ?? 'P';
                   const sidx = selectedId ?? 0;
+                  console.log('[zone-press] numZone:', numZone, '| fert:', fert, '| sidx:', sidx, '| parcelleDbId:', parcelleDbId, '| element:', zone.properties?.element);
                   const dbId = parcelleDbId ?? Number(
                     features[sidx]?.properties?.id_parcel ??
                     features[sidx]?.properties?.id ??
