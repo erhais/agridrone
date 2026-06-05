@@ -241,7 +241,9 @@ export async function patchZoneSemis(
 }
 
 export interface EngraisZonePatch {
+  perso_rendement: boolean;
   rendement?: number | null;
+  perso_dose: boolean;
   dose?: number | null;
   id_type_sol?: number | null;
 }

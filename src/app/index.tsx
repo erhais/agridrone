@@ -1878,12 +1878,15 @@ export default function HomeScreen() {
             const fert = selectedElement ?? 'P';
             const rendVal = data.perso_rendement && data.rendement > 0 ? data.rendement : null;
             const doseVal = data.perso_dose && data.dose >= 0 ? data.dose : null;
-            const patch: { rendement?: number | null; dose?: number | null; id_type_sol?: number | null } = {};
-            if (data.perso_rendement) patch.rendement = rendVal;
-            if (data.perso_dose) patch.dose = doseVal;
-            if (data.id_type_sol != null) patch.id_type_sol = data.id_type_sol;
-            if (Object.keys(patch).length > 0) {
-              await patchZoneEngrais(data.num_zone, fert, patch);
+            const shouldPatch = data.perso_rendement || data.perso_dose || data.id_type_sol != null;
+            if (shouldPatch) {
+              await patchZoneEngrais(data.num_zone, fert, {
+                perso_rendement: data.perso_rendement,
+                rendement: data.rendement > 0 ? data.rendement : null,
+                perso_dose: data.perso_dose,
+                dose: data.dose >= 0 ? data.dose : null,
+                ...(data.id_type_sol != null ? { id_type_sol: data.id_type_sol } : {}),
+              });
             }
             setZoneFormVisible(false);
             setSelectedZoneIdx(null);
