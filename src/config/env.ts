@@ -8,6 +8,6 @@ const BASE_URLS: Record<'dev' | 'prod', string> = {
 export const config = {
   env: ENV,
   baseURL: BASE_URLS[ENV],
-  timeout: 10000,
+  timeout: 30000,
   isProd: ENV === 'prod',
 } as const;

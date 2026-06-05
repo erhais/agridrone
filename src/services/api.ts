@@ -1,5 +1,5 @@
 import { config } from '../config/env';
-import { loadToken, refreshToken } from './authService';
+import { clearSession, loadToken, refreshToken } from './authService';
 
 export class ApiError extends Error {
   constructor(
@@ -9,6 +9,17 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+// Callback appelé quand le token est rejeté par le BO et que le refresh échoue.
+let _onSessionExpired: (() => void) | null = null;
+
+export function registerSessionExpiredHandler(fn: () => void): void {
+  _onSessionExpired = fn;
+}
+
+export function unregisterSessionExpiredHandler(): void {
+  _onSessionExpired = null;
 }
 
 async function buildHeaders(): Promise<HeadersInit> {
@@ -29,6 +40,9 @@ async function handleResponse<T>(
       const retried = await retry();
       if (retried.ok) return retried.json() as Promise<T>;
     }
+    // Refresh impossible : session expirée → retour à la connexion
+    await clearSession();
+    _onSessionExpired?.();
   }
   if (!response.ok) {
     let detail = '';

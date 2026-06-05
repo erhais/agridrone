@@ -51,7 +51,7 @@ import {
   type ReferentielItem,
   type TypeSolItem,
 } from '../services/agridroneService';
-import { apiService } from '../services/api';
+import { apiService, registerSessionExpiredHandler, unregisterSessionExpiredHandler } from '../services/api';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
 import LoginModal, { clearSession } from '../components/LoginModal';
 import { loadToken, refreshToken, fetchRepositoriesStored, switchRepository, type AuthRepository } from '../services/authService';
@@ -927,6 +927,13 @@ export default function HomeScreen() {
       }
     })();
   }, []);
+
+  // Retour à la connexion si le BO rejette le token et que le refresh échoue
+  useEffect(() => {
+    registerSessionExpiredHandler(() => setIsAuthenticated(false));
+    return () => unregisterSessionExpiredHandler();
+  }, []);
+
   const [selectedZoneIdx, setSelectedZoneIdx] = useState<number | null>(null);
   const [showEditHint, setShowEditHint] = useState(false);
   const [zoneFormVisible, setZoneFormVisible] = useState(false);
@@ -1871,12 +1878,12 @@ export default function HomeScreen() {
             const fert = selectedElement ?? 'P';
             const rendVal = data.perso_rendement && data.rendement > 0 ? data.rendement : null;
             const doseVal = data.perso_dose && data.dose >= 0 ? data.dose : null;
-            if (rendVal !== null || doseVal !== null || data.id_type_sol != null) {
-              await patchZoneEngrais(data.num_zone, fert, {
-                rendement: rendVal,
-                dose: doseVal,
-                id_type_sol: data.id_type_sol,
-              });
+            const patch: { rendement?: number | null; dose?: number | null; id_type_sol?: number | null } = {};
+            if (data.perso_rendement) patch.rendement = rendVal;
+            if (data.perso_dose) patch.dose = doseVal;
+            if (data.id_type_sol != null) patch.id_type_sol = data.id_type_sol;
+            if (Object.keys(patch).length > 0) {
+              await patchZoneEngrais(data.num_zone, fert, patch);
             }
             setZoneFormVisible(false);
             setSelectedZoneIdx(null);

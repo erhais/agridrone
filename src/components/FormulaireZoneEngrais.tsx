@@ -106,22 +106,42 @@ export default function FormulaireZoneEngrais({
   const [dose,           setDose]           = useState('');
   const [selectedTypeSol, setSelectedTypeSol] = useState<number | null>(null);
 
-  // Init : priorité initialDetail (API zone), fallback properties zone
+  // Refs pour lire les valeurs courantes sans en faire des dépendances de l'effet d'init.
+  const typeSolsRef    = useRef(typeSols);
+  const initialDetailRef = useRef(initialDetail);
+  const rendementGlobalRef = useRef(rendementGlobal);
+  useEffect(() => { typeSolsRef.current = typeSols; }, [typeSols]);
+  useEffect(() => { initialDetailRef.current = initialDetail; }, [initialDetail]);
+  useEffect(() => { rendementGlobalRef.current = rendementGlobal; }, [rendementGlobal]);
+
+  // Clé stable : id de zone + num. L'init ne tourne qu'à l'ouverture ou au changement de zone,
+  // jamais à cause d'un re-render du parent (zone est un objet littéral → nouvelle référence).
+  const formKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      formKeyRef.current = null;
+      return;
+    }
+    const key = `${String(zone.id)}:${String(zone.num_zone)}`;
+    if (formKeyRef.current === key) return; // même zone, re-render du parent → rien
+    formKeyRef.current = key;
+
     const p = zone.properties;
-    const d = initialDetail;
+    const d = initialDetailRef.current;
     setTeneur(d?.teneur != null ? String(d.teneur) : (p.teneur != null ? String(p.teneur) : ''));
     setPh(d?.ph != null ? String(d.ph) : (p.ph != null ? String(p.ph) : ''));
     setDose(d?.dose != null ? String(d.dose) : (p.dose != null ? String(p.dose) : ''));
-    const rend = d?.rendement != null ? String(d.rendement)
-      : rendementGlobal != null ? String(rendementGlobal)
+    const isPersoRend = d?.perso_rendement === 1;
+    setPersoRendement(isPersoRend);
+    const rend = isPersoRend && d?.rendement != null
+      ? String(d.rendement)
+      : rendementGlobalRef.current != null ? String(rendementGlobalRef.current)
       : p.rendement != null ? String(p.rendement) : '';
     setRendement(rend);
-    setPersoRendement(false);
     setPersoDose(false);
     const idTypeSol = (p.id_type_sol as number | null)
-      ?? typeSols.find(t => t.nom === p.label)?.id
+      ?? typeSolsRef.current.find(t => t.nom === p.label)?.id
       ?? null;
     setSelectedTypeSol(idTypeSol);
 
@@ -132,7 +152,9 @@ export default function FormulaireZoneEngrais({
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
     }).start();
-  }, [visible, zone, typeSols]);
+  // zone est un objet littéral (nouvelle ref à chaque render parent) — on compare par clé stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, zone.id, zone.num_zone]);
 
   const close = () => {
     Keyboard.dismiss();
@@ -154,8 +176,8 @@ export default function FormulaireZoneEngrais({
   })).current;
 
   const handleSave = async () => {
-    // Aucun droit de personnalisation → fermeture silencieuse sans appel API
-    if (!allowRendementSpec && !allowDosageManuel) {
+    const canSaveTypeSol = isEditeur && typeSols.length > 0;
+    if (!allowRendementSpec && !allowDosageManuel && !canSaveTypeSol) {
       close();
       return;
     }
@@ -309,6 +331,9 @@ export default function FormulaireZoneEngrais({
                     return;
                   }
                   setPersoRendement(v);
+                  if (!v) {
+                    setRendement(rendementGlobal != null ? String(rendementGlobal) : '');
+                  }
                 }}
                 label="Personnaliser le rendement"
               />
@@ -318,7 +343,7 @@ export default function FormulaireZoneEngrais({
                 </Text>
                 <TextInput
                   style={[styles.input, !persoRendement && styles.inputReadonly]}
-                  value={rendement}
+                  value={persoRendement ? rendement : (rendementGlobal != null ? String(rendementGlobal) : '')}
                   onChangeText={persoRendement ? setRendement : undefined}
                   editable={persoRendement}
                   keyboardType="numeric"
