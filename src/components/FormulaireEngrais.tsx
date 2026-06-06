@@ -9,19 +9,74 @@ import {
   Easing,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.85;
+
+// Injection JS pour ne montrer que le formulaire 1/2/3 + logo ARVALIS
+const FERTIORGA_CLEAN_JS = `
+(function() {
+  // CSS : masquer les éléments sémantiques header/nav
+  var s = document.createElement('style');
+  s.textContent = 'header,nav{display:none!important}body,html{padding:0!important;margin:0!important}';
+  (document.head || document.documentElement).appendChild(s);
+
+  function hideEl(el) { if (el) el.style.display = 'none'; }
+
+  function clean() {
+    // 1) Barre nav : masquer UNIQUEMENT le parent direct du lien "Accueil"
+    document.querySelectorAll('a').forEach(function(a) {
+      var t = (a.innerText || '').trim();
+      if (t === 'Accueil' || t === 'En savoir plus') {
+        hideEl(a.parentElement);
+      }
+    });
+
+    // 2 & 3) Description + bloc Attention
+    //   - innerText peut contenir l'apostrophe typographique ' (U+2019) → pas de startsWith avec '
+    //   - garde longueur < 900 pour ne pas masquer un container parent
+    document.querySelectorAll('p, div').forEach(function(el) {
+      var t = (el.innerText || '').trim();
+      if (t.length > 900) return;
+      if (
+        t.includes('outil Fertiliser') ||          // paragraphe description
+        t.includes('strictement agronomique') ||   // bloc Attention
+        t.includes('participation financière')     // pied de page textuel
+      ) {
+        hideEl(el);
+      }
+    });
+
+    // 4) Footer : masquer le parent DIRECT des liens CGU/Contact
+    document.querySelectorAll('a').forEach(function(a) {
+      var t = (a.innerText || '').trim();
+      if (t === 'CGU' || t === 'Contact') {
+        hideEl(a.parentElement);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', clean);
+  } else {
+    clean();
+  }
+  true;
+})();
+`;
 
 const ELEMENT_LABELS: Record<string, string> = {
   P: 'PHOSPHORE',
@@ -110,6 +165,7 @@ export default function FormulaireEngrais({
   const [visiblePlanFumure,   setVisiblePlanFumure]   = useState(true);
   const [errors,              setErrors]              = useState<Record<string, string>>({});
   const [saving,              setSaving]              = useState(false);
+  const [webViewVisible,      setWebViewVisible]      = useState(false);
 
   // Chargement des référentiels au montage — fallbacks si endpoint absent/vide
   useEffect(() => {
@@ -397,7 +453,7 @@ export default function FormulaireEngrais({
             <View style={styles.field}>
               <View style={styles.labelRow}>
                 <Text style={styles.label}>Qté déjà apportée *</Text>
-                <Pressable onPress={() => Alert.alert('Information', 'Fonctionnalité à venir')}>
+                <Pressable onPress={() => setWebViewVisible(true)}>
                   <Text style={styles.linkText}>Calculer</Text>
                 </Pressable>
               </View>
@@ -449,6 +505,33 @@ export default function FormulaireEngrais({
         </View>
 
       </Animated.View>
+
+      {/* WebView Fertiorga */}
+      <Modal
+        visible={webViewVisible}
+        animationType="slide"
+        onRequestClose={() => setWebViewVisible(false)}>
+        <View style={styles.wvContainer}>
+          <View style={[styles.wvHeader, { paddingTop: (StatusBar.currentHeight ?? 0) + (Platform.OS === 'ios' ? 44 : 8) }]}>
+            <Text style={styles.wvTitle}>Fertiorga — ARVALIS</Text>
+            <Pressable onPress={() => setWebViewVisible(false)} style={styles.wvClose} hitSlop={12}>
+              <Text style={styles.wvCloseText}>✕</Text>
+            </Pressable>
+          </View>
+          <WebView
+            source={{ uri: 'https://fertiorga.arvalis-infos.fr/FR' }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={styles.wvLoading}>
+                <ActivityIndicator size="large" color="#3B6D11" />
+              </View>
+            )}
+            injectedJavaScript={FERTIORGA_CLEAN_JS}
+          />
+        </View>
+      </Modal>
+
     </Animated.View>
   );
 }
@@ -570,4 +653,24 @@ const styles = StyleSheet.create({
   btnSave:   { backgroundColor: '#3B6D11' },
   btnCancelText: { fontSize: 14, fontWeight: '600', color: '#555' },
   btnSaveText:   { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // WebView Fertiorga
+  wvContainer: { flex: 1, backgroundColor: '#fff' },
+  wvHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#3B6D11',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  wvTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  wvClose: { padding: 4 },
+  wvCloseText: { fontSize: 18, color: '#fff', fontWeight: '700' },
+  wvLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
 });

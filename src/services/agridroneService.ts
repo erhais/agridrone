@@ -248,12 +248,19 @@ export interface EngraisZonePatch {
   id_type_sol?: number | null;
 }
 
+export interface EngraisZonePatchResponse {
+  id_type_sol?: number | null;
+  couleur?: string | null;
+  dose?: number | null;
+  rendement?: number | null;
+}
+
 export async function patchZoneEngrais(
   numZone: number,
   fertilisant: string,
   data: EngraisZonePatch,
-): Promise<unknown> {
-  return apiService.patch<unknown>(
+): Promise<EngraisZonePatchResponse> {
+  return apiService.patch<EngraisZonePatchResponse>(
     `/api/v1/formulaires/zones/${numZone}?fertilisant=${encodeURIComponent(fertilisant)}`,
     data,
   );

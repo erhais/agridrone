@@ -955,6 +955,8 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [flashZoneNum, setFlashZoneNum] = useState<number | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1599,8 +1601,9 @@ export default function HomeScreen() {
         {zones.flatMap((zone, zi) => {
           const { fillColor, strokeColor, strokeWidth } = getZoneDetailStyle(zone);
           const isSelected = editZoneMode && selectedZoneIdx === zi;
-          const zFill   = isSelected ? 'rgba(255,0,0,0.4)' : fillColor;
-          const zStroke = isSelected ? '#FF0000' : strokeColor;
+          const isFlashing = zone.num_zone != null && zone.num_zone === flashZoneNum;
+          const zFill   = isSelected ? 'rgba(255,0,0,0.4)' : isFlashing ? 'rgba(46,200,100,0.75)' : fillColor;
+          const zStroke = isSelected ? '#FF0000' : isFlashing ? '#00C864' : strokeColor;
           const zWidth  = isSelected ? 2.5 : strokeWidth;
           const onPressZone = editZoneMode
             ? () => {
@@ -1876,41 +1879,39 @@ export default function HomeScreen() {
           }}
           onSave={async (data: ZoneEngraisData) => {
             const fert = selectedElement ?? 'P';
-            const rendVal = data.perso_rendement && data.rendement > 0 ? data.rendement : null;
-            const doseVal = data.perso_dose && data.dose >= 0 ? data.dose : null;
             const shouldPatch = data.perso_rendement || data.perso_dose || data.id_type_sol != null;
             if (shouldPatch) {
-              await patchZoneEngrais(data.num_zone, fert, {
+              const res = await patchZoneEngrais(data.num_zone, fert, {
                 perso_rendement: data.perso_rendement,
                 rendement: data.rendement > 0 ? data.rendement : null,
                 perso_dose: data.perso_dose,
                 dose: data.dose >= 0 ? data.dose : null,
                 ...(data.id_type_sol != null ? { id_type_sol: data.id_type_sol } : {}),
               });
+              setZones(prev => prev.map(z => {
+                if (z.num_zone !== data.num_zone) return z;
+                return {
+                  ...z,
+                  style: z.style && res.couleur
+                    ? { ...z.style, fillColor: res.couleur }
+                    : z.style,
+                  properties: z.properties
+                    ? {
+                        ...z.properties,
+                        ...(res.id_type_sol != null ? { id_type_sol: res.id_type_sol } : {}),
+                        ...(res.dose != null ? { dose: res.dose } : {}),
+                      }
+                    : z.properties,
+                };
+              }));
+              if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+              setFlashZoneNum(data.num_zone);
+              flashTimerRef.current = setTimeout(() => setFlashZoneNum(null), 700);
+              setLegendExpanded(true);
+              Alert.alert('Succès', 'Zone enregistrée ✅');
             }
             setZoneFormVisible(false);
             setSelectedZoneIdx(null);
-            // Recharger les zones → recalcul total légende + étiquettes doses
-            const dbId = parcelleDbId ?? Number(
-              features[selectedId!]?.properties?.id_parcel ??
-              features[selectedId!]?.properties?.id ??
-              selectedId,
-            );
-            setLoadingZones(true);
-            getParcelleDetails(dbId, selectedElement ?? 'P')
-              .then(detail => {
-                setZones(detail.zones);
-                setParcelleStats(detail.stats);
-                setPrelevements(detail['prélevements'] ?? []);
-                setLegendExpanded(true);
-                const hasDoses = detail.zones.some(
-                  z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
-                );
-                if (hasDoses) setShowDoseLabels(true);
-              })
-              .catch(() => {})
-              .finally(() => setLoadingZones(false));
-            Alert.alert('Succès', 'Zone enregistrée ✅');
           }}
         />
       )}
