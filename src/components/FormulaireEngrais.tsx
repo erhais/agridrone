@@ -26,54 +26,18 @@ import { WebView } from 'react-native-webview';
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.85;
 
-// Injection JS pour ne montrer que le formulaire 1/2/3 + logo ARVALIS
+// Injection CSS pour ne montrer que le formulaire 1/2/3 + logo ARVALIS
+// Sélecteurs issus du HTML réel de fertiorga.arvalis-infos.fr
 const FERTIORGA_CLEAN_JS = `
 (function() {
-  // CSS : masquer les éléments sémantiques header/nav
   var s = document.createElement('style');
-  s.textContent = 'header,nav{display:none!important}body,html{padding:0!important;margin:0!important}';
+  s.textContent =
+    'div[data-role="header"]{display:none!important}' +
+    '.contenu .container>div[style*="margin: 10px 20px"]{display:none!important}' +
+    '.lim-footer{display:none!important}' +
+    '#tarteaucitronRoot{display:none!important}' +
+    'body,html{padding:0!important;margin:0!important}';
   (document.head || document.documentElement).appendChild(s);
-
-  function hideEl(el) { if (el) el.style.display = 'none'; }
-
-  function clean() {
-    // 1) Barre nav : masquer UNIQUEMENT le parent direct du lien "Accueil"
-    document.querySelectorAll('a').forEach(function(a) {
-      var t = (a.innerText || '').trim();
-      if (t === 'Accueil' || t === 'En savoir plus') {
-        hideEl(a.parentElement);
-      }
-    });
-
-    // 2 & 3) Description + bloc Attention
-    //   - innerText peut contenir l'apostrophe typographique ' (U+2019) → pas de startsWith avec '
-    //   - garde longueur < 900 pour ne pas masquer un container parent
-    document.querySelectorAll('p, div').forEach(function(el) {
-      var t = (el.innerText || '').trim();
-      if (t.length > 900) return;
-      if (
-        t.includes('outil Fertiliser') ||          // paragraphe description
-        t.includes('strictement agronomique') ||   // bloc Attention
-        t.includes('participation financière')     // pied de page textuel
-      ) {
-        hideEl(el);
-      }
-    });
-
-    // 4) Footer : masquer le parent DIRECT des liens CGU/Contact
-    document.querySelectorAll('a').forEach(function(a) {
-      var t = (a.innerText || '').trim();
-      if (t === 'CGU' || t === 'Contact') {
-        hideEl(a.parentElement);
-      }
-    });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', clean);
-  } else {
-    clean();
-  }
   true;
 })();
 `;
@@ -528,6 +492,7 @@ export default function FormulaireEngrais({
               </View>
             )}
             injectedJavaScript={FERTIORGA_CLEAN_JS}
+            javaScriptEnabled
           />
         </View>
       </Modal>
