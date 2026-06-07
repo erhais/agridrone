@@ -13,7 +13,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -62,7 +62,12 @@ import FormulaireZoneSemis from '../components/FormulaireZoneSemis';
 import FormulaireZoneLibre from '../components/FormulaireZoneLibre';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import ReportCard, { type ReportProps } from '../components/ReportCard';
+import { ZoneDoseBubble, type ZoneBubbleInfo } from '../components/ZoneDoseBubble';
 import { type SemisFormResponse } from '../services/agridroneService';
+import {
+  bearingDeg, bearingToCompass, distanceMeters,
+  nearestOnBoundary, nudgeLatLng, pointInZoneGeometry, type LatLng,
+} from '../utils/geoUtils';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -958,6 +963,10 @@ export default function HomeScreen() {
   const [flashZoneNum, setFlashZoneNum] = useState<number | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Simulation géolocalisation ────────────────────────────────────────────
+  const [simMode, setSimMode] = useState(false);
+  const [simLocation, setSimLocation] = useState<LatLng | null>(null);
+
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoadingParcelles(true);
@@ -1171,6 +1180,52 @@ export default function HomeScreen() {
   }, [showDoseLabels, zones, mapLatDelta]);
 
   useEffect(() => { void updateLabelPositions(); }, [showDoseLabels, zones, mapLatDelta]);
+
+  // ── Bulle dose : zone courante + prochaine zone < 10 m ────────────────────
+  const activeLocation: LatLng | null = simMode ? simLocation : (userLocation ?? null);
+
+  const zoneBubbleInfo = useMemo<ZoneBubbleInfo | null>(() => {
+    if (!activeLocation || zones.length === 0 || selectedElement === null) return null;
+
+    const currentZone = zones.find(z => z.geometry && pointInZoneGeometry(activeLocation, z.geometry));
+    if (!currentZone) return null;
+
+    const { fillColor } = getZoneDetailStyle(currentZone);
+    const currentDose = (currentZone.properties?.dose as number | null) ?? null;
+    const unite = (currentZone.properties?.unite as string | undefined) ?? 'kg/ha';
+
+    // Chercher la zone avec dose différente la plus proche (seuil 10 m)
+    const THRESHOLD = 10;
+    let nextZone: ZoneBubbleInfo['nextZone'] = null;
+    let minDist = THRESHOLD;
+
+    for (const zone of zones) {
+      if (zone === currentZone) continue;
+      const zoneDose = (zone.properties?.dose as number | null) ?? null;
+      if (zoneDose === currentDose) continue;
+      if (!zone.geometry) continue;
+
+      const coords = zone.geometry.type === 'Polygon'
+        ? (zone.geometry.coordinates as number[][][])[0]
+        : (zone.geometry.coordinates as number[][][][])[0]?.[0];
+      if (!coords) continue;
+
+      const { nearest, distanceM } = nearestOnBoundary(activeLocation, coords);
+      if (distanceM < minDist) {
+        minDist = distanceM;
+        const deg = bearingDeg(activeLocation, nearest);
+        nextZone = {
+          direction: bearingToCompass(deg),
+          distanceM,
+          dose: zoneDose,
+          fillColor: getZoneDetailStyle(zone).fillColor,
+        };
+      }
+    }
+
+    return { fillColor, dose: currentDose, unite, nextZone };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLocation, zones, selectedElement]);
 
   const centerOnParcelle = () => {
     if (selectedId === null) return;
@@ -1559,7 +1614,8 @@ export default function HomeScreen() {
         initialRegion={DEFAULT_REGION}
         mapType="none"
         onRegionChange={r => setMapLatDelta(r.latitudeDelta)}
-        onRegionChangeComplete={() => { void updateLabelPositions(); }}>
+        onRegionChangeComplete={() => { void updateLabelPositions(); }}
+        onPress={e => { if (simMode) setSimLocation(e.nativeEvent.coordinate); }}>
         <UrlTile urlTemplate={IGN_ORTHO_URL} maximumZ={19} zIndex={-1} />
         {features.flatMap((feature, fi) => {
           const nom = feature.properties?.nom_parcel ?? 'Sans nom';
@@ -1739,6 +1795,20 @@ export default function HomeScreen() {
           </>
         )}
 
+        {/* ── Marqueur de simulation GPS ───────────────────────────────── */}
+        {simMode && simLocation && (
+          <Marker
+            coordinate={simLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            draggable
+            tracksViewChanges
+            onDragEnd={e => setSimLocation(e.nativeEvent.coordinate)}>
+            <View style={styles.simDot}>
+              <View style={styles.simDotInner} />
+            </View>
+          </Marker>
+        )}
+
       </MapView>
 
       {/* ── Étiquettes doses — overlay React Native (hors MapView) ─────── */}
@@ -1765,20 +1835,22 @@ export default function HomeScreen() {
       <View style={[StyleSheet.absoluteFillObject, { opacity: capturingMap ? 0 : 1 }]} pointerEvents={capturingMap ? 'none' : 'box-none'}>
 
       {/* ── 2. Barre de recherche ─────────────────────────────────────── */}
-      <SearchBar
-        topOffset={searchTop}
-        query={query}
-        onQueryChange={text => {
-          setQuery(text);
-          setDropdownOpen(true);
-        }}
-        onFocus={() => { setQuery(''); setDropdownOpen(true); }}
-        onGpsPress={handleReset}
-        filteredParcelles={filteredParcelles}
-        dropdownOpen={dropdownOpen}
-        onSelectParcelle={handleSelect}
-        inputRef={searchInputRef}
-      />
+      {!isGeolocating && !simMode && (
+        <SearchBar
+          topOffset={searchTop}
+          query={query}
+          onQueryChange={text => {
+            setQuery(text);
+            setDropdownOpen(true);
+          }}
+          onFocus={() => { setQuery(''); setDropdownOpen(true); }}
+          onGpsPress={handleReset}
+          filteredParcelles={filteredParcelles}
+          dropdownOpen={dropdownOpen}
+          onSelectParcelle={handleSelect}
+          inputRef={searchInputRef}
+        />
+      )}
 
       {/* ── 3. Barre d'icônes droite ──────────────────────────────────── */}
       <Animated.View
@@ -1843,6 +1915,66 @@ export default function HomeScreen() {
         cultureName={selectedElement === 'S' ? (semisCultureDefinie?.nom ?? null) : null}
         cultureId={selectedElement === 'S' ? (semisCultureDefinie?.id ?? null) : null}
       />
+
+      {/* ── Bulle dose zone courante (même position que SearchBar) ─────── */}
+      <ZoneDoseBubble info={zoneBubbleInfo} topOffset={searchTop} />
+
+      {/* Bouton SIM (actif uniquement si des zones sont chargées) */}
+      {zones.length > 0 && (
+        <Pressable
+          style={[styles.simToggle, { bottom: insets.bottom + 82 }, simMode && styles.simToggleActive]}
+          onPress={() => {
+            if (simMode) { setSimMode(false); return; }
+            // Calculer position initiale : centroid ou barycentre du polygone
+            let loc: LatLng | null = null;
+            const first = zones[0];
+            if (first.centroid) {
+              loc = { latitude: first.centroid.lat, longitude: first.centroid.lng };
+            } else if (first.geometry) {
+              const coords = first.geometry.type === 'Polygon'
+                ? (first.geometry.coordinates as number[][][])[0]
+                : (first.geometry.coordinates as number[][][][])[0]?.[0];
+              if (coords?.length) {
+                loc = {
+                  latitude:  coords.reduce((s, c) => s + c[1], 0) / coords.length,
+                  longitude: coords.reduce((s, c) => s + c[0], 0) / coords.length,
+                };
+              }
+            }
+            if (loc) {
+              setSimLocation(loc);
+              // Centrer la carte sur le point simulé
+              mapRef.current?.animateToRegion(
+                { ...loc, latitudeDelta: 0.0008, longitudeDelta: 0.0008 },
+                500,
+              );
+            }
+            setSimMode(true);
+          }}>
+          <Text style={styles.simToggleText}>{simMode ? '⏹ SIM' : '▶ SIM'}</Text>
+        </Pressable>
+      )}
+
+      {/* ── Contrôles flèches simulation (au-dessus du bouton SIM) ────── */}
+      {simMode && (
+        <View style={[styles.simControls, { bottom: insets.bottom + 82 + 44 }]}>
+          <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  2,  0) : p)}>
+            <Text style={styles.simArrowText}>▲</Text>
+          </Pressable>
+          <View style={styles.simRow}>
+            <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  0, -2) : p)}>
+              <Text style={styles.simArrowText}>◀</Text>
+            </Pressable>
+            <View style={{ width: 36 }} />
+            <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  0,  2) : p)}>
+              <Text style={styles.simArrowText}>▶</Text>
+            </Pressable>
+          </View>
+          <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p, -2,  0) : p)}>
+            <Text style={styles.simArrowText}>▼</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
       <BottomPanel
@@ -2515,6 +2647,65 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 6,
   },
+
+  // ── Simulation GPS ────────────────────────────────────────────────────────
+  simDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,140,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  simDotInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#FF8C00',
+    borderWidth: 2.5,
+    borderColor: '#fff',
+    elevation: 6,
+  },
+  simToggle: {
+    position: 'absolute',
+    right: 14,
+    backgroundColor: 'rgba(30,30,30,0.82)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  simToggleActive: {
+    backgroundColor: 'rgba(200,80,0,0.9)',
+  },
+  simToggleText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  simControls: {
+    position: 'absolute',
+    right: 14,
+    alignItems: 'center',
+    gap: 4,
+  },
+  simRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  simArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(30,30,30,0.80)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  simArrowText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+
   switchModalBg: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
