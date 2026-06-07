@@ -963,9 +963,6 @@ export default function HomeScreen() {
   const [flashZoneNum, setFlashZoneNum] = useState<number | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Simulation géolocalisation ────────────────────────────────────────────
-  const [simMode, setSimMode] = useState(false);
-  const [simLocation, setSimLocation] = useState<LatLng | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1182,7 +1179,12 @@ export default function HomeScreen() {
   useEffect(() => { void updateLabelPositions(); }, [showDoseLabels, zones, mapLatDelta]);
 
   // ── Bulle dose : zone courante + prochaine zone < 10 m ────────────────────
-  const activeLocation: LatLng | null = simMode ? simLocation : (userLocation ?? null);
+  // Mode simulation réservé aux éditeurs avec plusieurs projets
+  const [simMode, setSimMode] = useState(false);
+  const [simLocation, setSimLocation] = useState<LatLng | null>(null);
+  const canUseSim = isEditeur && switchRepos.length > 1;
+
+  const activeLocation: LatLng | null = (simMode && simLocation) ? simLocation : (userLocation ?? null);
 
   const zoneBubbleInfo = useMemo<ZoneBubbleInfo | null>(() => {
     if (!activeLocation || zones.length === 0 || selectedElement === null) return null;
@@ -1795,7 +1797,7 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* ── Marqueur de simulation GPS ───────────────────────────────── */}
+        {/* ── Marqueur de simulation GPS (éditeurs multi-projets) ──────── */}
         {simMode && simLocation && (
           <Marker
             coordinate={simLocation}
@@ -1919,13 +1921,12 @@ export default function HomeScreen() {
       {/* ── Bulle dose zone courante (même position que SearchBar) ─────── */}
       <ZoneDoseBubble info={zoneBubbleInfo} topOffset={searchTop} />
 
-      {/* Bouton SIM (actif uniquement si des zones sont chargées) */}
-      {zones.length > 0 && (
+      {/* ── Bouton SIM + flèches (éditeurs multi-projets uniquement) ───── */}
+      {canUseSim && zones.length > 0 && (
         <Pressable
           style={[styles.simToggle, { bottom: insets.bottom + 82 }, simMode && styles.simToggleActive]}
           onPress={() => {
             if (simMode) { setSimMode(false); return; }
-            // Calculer position initiale : centroid ou barycentre du polygone
             let loc: LatLng | null = null;
             const first = zones[0];
             if (first.centroid) {
@@ -1943,7 +1944,6 @@ export default function HomeScreen() {
             }
             if (loc) {
               setSimLocation(loc);
-              // Centrer la carte sur le point simulé
               mapRef.current?.animateToRegion(
                 { ...loc, latitudeDelta: 0.0008, longitudeDelta: 0.0008 },
                 500,
@@ -1955,8 +1955,7 @@ export default function HomeScreen() {
         </Pressable>
       )}
 
-      {/* ── Contrôles flèches simulation (au-dessus du bouton SIM) ────── */}
-      {simMode && (
+      {simMode && canUseSim && (
         <View style={[styles.simControls, { bottom: insets.bottom + 82 + 44 }]}>
           <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  2,  0) : p)}>
             <Text style={styles.simArrowText}>▲</Text>
@@ -1975,6 +1974,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
       )}
+
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
       <BottomPanel
@@ -2650,61 +2650,29 @@ const styles = StyleSheet.create({
 
   // ── Simulation GPS ────────────────────────────────────────────────────────
   simDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: 'rgba(255,140,0,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   simDotInner: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#FF8C00',
-    borderWidth: 2.5,
-    borderColor: '#fff',
-    elevation: 6,
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#FF8C00', borderWidth: 2.5, borderColor: '#fff', elevation: 6,
   },
   simToggle: {
-    position: 'absolute',
-    right: 14,
+    position: 'absolute', right: 14,
     backgroundColor: 'rgba(30,30,30,0.82)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7,
   },
-  simToggleActive: {
-    backgroundColor: 'rgba(200,80,0,0.9)',
-  },
-  simToggleText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  simControls: {
-    position: 'absolute',
-    right: 14,
-    alignItems: 'center',
-    gap: 4,
-  },
-  simRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
+  simToggleActive: { backgroundColor: 'rgba(200,80,0,0.9)' },
+  simToggleText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  simControls: { position: 'absolute', right: 14, alignItems: 'center', gap: 4 },
+  simRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   simArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 36, height: 36, borderRadius: 8,
     backgroundColor: 'rgba(30,30,30,0.80)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  simArrowText: {
-    color: '#fff',
-    fontSize: 16,
-  },
+  simArrowText: { color: '#fff', fontSize: 16 },
 
   switchModalBg: {
     flex: 1,

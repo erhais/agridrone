@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 
 export interface NextZoneHint {
   direction: string;
@@ -19,7 +20,32 @@ interface Props {
   topOffset: number;
 }
 
+const BLINK_THRESHOLD = 5; // mètres
+
 export function ZoneDoseBubble({ info, topOffset }: Props) {
+  const blinkAnim = useRef(new Animated.Value(1)).current;
+  const animRef   = useRef<Animated.CompositeAnimation | null>(null);
+
+  const shouldBlink =
+    info?.nextZone != null && info.nextZone.distanceM <= BLINK_THRESHOLD;
+
+  useEffect(() => {
+    if (shouldBlink) {
+      animRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(blinkAnim, { toValue: 0.1, duration: 300, useNativeDriver: true }),
+          Animated.timing(blinkAnim, { toValue: 1,   duration: 300, useNativeDriver: true }),
+        ]),
+      );
+      animRef.current.start();
+    } else {
+      animRef.current?.stop();
+      animRef.current = null;
+      blinkAnim.setValue(1);
+    }
+    return () => { animRef.current?.stop(); };
+  }, [shouldBlink, blinkAnim]);
+
   if (!info) return null;
 
   const doseLabel = info.dose != null ? `${info.dose} ${info.unite}` : '—';
@@ -28,10 +54,10 @@ export function ZoneDoseBubble({ info, topOffset }: Props) {
     <View style={[styles.wrapper, { top: topOffset }]} pointerEvents="none">
 
       {/* Pastille principale — dose courante */}
-      <View style={styles.bubble}>
+      <Animated.View style={[styles.bubble, { opacity: blinkAnim }]}>
         <View style={[styles.colorDot, { backgroundColor: info.fillColor }]} />
         <Text style={styles.doseText}>{doseLabel}</Text>
-      </View>
+      </Animated.View>
 
       {/* Indicateur zone suivante < 10 m */}
       {info.nextZone && (
@@ -58,7 +84,6 @@ const styles = StyleSheet.create({
     gap: 6,
     zIndex: 100,
   },
-
   bubble: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -86,7 +111,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
-
   nextBubble: {
     flexDirection: 'row',
     alignItems: 'center',
