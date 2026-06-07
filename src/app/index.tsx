@@ -924,7 +924,12 @@ export default function HomeScreen() {
       try {
         let token = await loadToken();
         if (!token) token = await refreshToken();
-        if (token) setIsAuthenticated(true);
+        if (token) {
+          setIsAuthenticated(true);
+          fetchRepositoriesStored().then(repos => {
+            if (repos && repos.length > 0) setSwitchRepos(repos);
+          }).catch(() => {});
+        }
       } catch {
         // pas de session valide → LoginModal
       } finally {
@@ -1072,10 +1077,8 @@ export default function HomeScreen() {
           setParcelleStats(data.stats);
           setParcelleDbId(data.parcelle.id);
           setPrelevements(data['prélevements'] ?? []);
-          console.log('[parcelle] données BO:', JSON.stringify(data.parcelle));
           const editeur = data.is_editeur ?? data.parcelle.is_editeur ?? false;
           const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
-          console.log('[editeur] is_editeur:', editeur, '| carte:', carte, '| data.is_editeur:', data.is_editeur);
           setIsEditeur(editeur);
           setCarteValue(carte);
           if (editeur) {
@@ -1086,7 +1089,7 @@ export default function HomeScreen() {
         }
       })
       .catch((err: unknown) => {
-        console.warn('[details] Erreur (cancelled=' + String(cancelled) + '):', err instanceof Error ? err.message : err);
+        // erreur silencieuse — l'UI reste dans son état précédent
       })
       .finally(() => { if (!cancelled) setLoadingZones(false); });
     return () => { cancelled = true; };
@@ -1182,9 +1185,35 @@ export default function HomeScreen() {
   // Mode simulation réservé aux éditeurs avec plusieurs projets
   const [simMode, setSimMode] = useState(false);
   const [simLocation, setSimLocation] = useState<LatLng | null>(null);
-  const canUseSim = isEditeur && switchRepos.length > 1;
+  const simRepeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopSimMove = useCallback(() => {
+    if (simRepeatRef.current !== null) {
+      clearInterval(simRepeatRef.current);
+      simRepeatRef.current = null;
+    }
+  }, []);
+  const startSimMove = useCallback((dLat: number, dLng: number) => {
+    if (simRepeatRef.current !== null) return; // déjà actif
+    setSimLocation(p => p ? nudgeLatLng(p, dLat, dLng) : p);
+    simRepeatRef.current = setInterval(() => {
+      setSimLocation(p => p ? nudgeLatLng(p, dLat, dLng) : p);
+    }, 120);
+  }, []);
+  const canUseSim = isGeolocating && switchRepos.length > 1;
 
   const activeLocation: LatLng | null = (simMode && simLocation) ? simLocation : (userLocation ?? null);
+
+  // Cap de déplacement : mis à jour quand la position change d'au moins 1 m
+  const prevLocationRef = useRef<LatLng | null>(null);
+  const [movementBearing, setMovementBearing] = useState<number | null>(null);
+  useEffect(() => {
+    if (!activeLocation) { prevLocationRef.current = null; setMovementBearing(null); return; }
+    const prev = prevLocationRef.current;
+    if (prev && distanceMeters(prev, activeLocation) >= 1) {
+      setMovementBearing(bearingDeg(prev, activeLocation));
+    }
+    prevLocationRef.current = activeLocation;
+  }, [activeLocation]);
 
   const zoneBubbleInfo = useMemo<ZoneBubbleInfo | null>(() => {
     if (!activeLocation || zones.length === 0 || selectedElement === null) return null;
@@ -1197,6 +1226,7 @@ export default function HomeScreen() {
     const unite = (currentZone.properties?.unite as string | undefined) ?? 'kg/ha';
 
     // Chercher la zone avec dose différente la plus proche (seuil 10 m)
+    // et dans la direction de déplacement (différence angulaire ≤ 90°)
     const THRESHOLD = 10;
     let nextZone: ZoneBubbleInfo['nextZone'] = null;
     let minDist = THRESHOLD;
@@ -1213,21 +1243,28 @@ export default function HomeScreen() {
       if (!coords) continue;
 
       const { nearest, distanceM } = nearestOnBoundary(activeLocation, coords);
-      if (distanceM < minDist) {
-        minDist = distanceM;
-        const deg = bearingDeg(activeLocation, nearest);
-        nextZone = {
-          direction: bearingToCompass(deg),
-          distanceM,
-          dose: zoneDose,
-          fillColor: getZoneDetailStyle(zone).fillColor,
-        };
+      if (distanceM >= minDist) continue;
+
+      const bearingToZone = bearingDeg(activeLocation, nearest);
+
+      // Filtrer par direction de déplacement si elle est connue
+      if (movementBearing !== null) {
+        const angleDiff = Math.abs(((bearingToZone - movementBearing + 540) % 360) - 180);
+        if (angleDiff > 90) continue; // l'utilisateur s'éloigne de cette zone
       }
+
+      minDist = distanceM;
+      nextZone = {
+        direction: bearingToCompass(bearingToZone),
+        distanceM,
+        dose: zoneDose,
+        fillColor: getZoneDetailStyle(zone).fillColor,
+      };
     }
 
     return { fillColor, dose: currentDose, unite, nextZone };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLocation, zones, selectedElement]);
+  }, [activeLocation, zones, selectedElement, movementBearing]);
 
   const centerOnParcelle = () => {
     if (selectedId === null) return;
@@ -1495,6 +1532,8 @@ export default function HomeScreen() {
         locationSubRef.current = null;
         setIsGeolocating(false);
         setUserLocation(null);
+        stopSimMove();
+        setSimMode(false);
         return;
       }
       void (async () => {
@@ -1698,7 +1737,7 @@ export default function HomeScreen() {
                   const numZone = zone.num_zone ?? (zi + 1);
                   const fert = selectedElement ?? 'P';
                   const sidx = selectedId ?? 0;
-                  console.log('[zone-press] numZone:', numZone, '| fert:', fert, '| sidx:', sidx, '| parcelleDbId:', parcelleDbId, '| element:', zone.properties?.element);
+
                   const dbId = parcelleDbId ?? Number(
                     features[sidx]?.properties?.id_parcel ??
                     features[sidx]?.properties?.id ??
@@ -1922,24 +1961,26 @@ export default function HomeScreen() {
       <ZoneDoseBubble info={zoneBubbleInfo} topOffset={searchTop} />
 
       {/* ── Bouton SIM + flèches (éditeurs multi-projets uniquement) ───── */}
-      {canUseSim && zones.length > 0 && (
+      {canUseSim && (
         <Pressable
           style={[styles.simToggle, { bottom: insets.bottom + 82 }, simMode && styles.simToggleActive]}
           onPress={() => {
-            if (simMode) { setSimMode(false); return; }
-            let loc: LatLng | null = null;
-            const first = zones[0];
-            if (first.centroid) {
-              loc = { latitude: first.centroid.lat, longitude: first.centroid.lng };
-            } else if (first.geometry) {
-              const coords = first.geometry.type === 'Polygon'
-                ? (first.geometry.coordinates as number[][][])[0]
-                : (first.geometry.coordinates as number[][][][])[0]?.[0];
-              if (coords?.length) {
-                loc = {
-                  latitude:  coords.reduce((s, c) => s + c[1], 0) / coords.length,
-                  longitude: coords.reduce((s, c) => s + c[0], 0) / coords.length,
-                };
+            if (simMode) { stopSimMove(); setSimMode(false); return; }
+            let loc: LatLng | null = userLocation ?? null;
+            if (zones.length > 0) {
+              const first = zones[0];
+              if (first.centroid) {
+                loc = { latitude: first.centroid.lat, longitude: first.centroid.lng };
+              } else if (first.geometry) {
+                const coords = first.geometry.type === 'Polygon'
+                  ? (first.geometry.coordinates as number[][][])[0]
+                  : (first.geometry.coordinates as number[][][][])[0]?.[0];
+                if (coords?.length) {
+                  loc = {
+                    latitude:  coords.reduce((s, c) => s + c[1], 0) / coords.length,
+                    longitude: coords.reduce((s, c) => s + c[0], 0) / coords.length,
+                  };
+                }
               }
             }
             if (loc) {
@@ -1957,19 +1998,19 @@ export default function HomeScreen() {
 
       {simMode && canUseSim && (
         <View style={[styles.simControls, { bottom: insets.bottom + 82 + 44 }]}>
-          <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  2,  0) : p)}>
+          <Pressable style={styles.simArrow} onPressIn={() => startSimMove( 2,  0)} onPressOut={stopSimMove}>
             <Text style={styles.simArrowText}>▲</Text>
           </Pressable>
           <View style={styles.simRow}>
-            <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  0, -2) : p)}>
+            <Pressable style={styles.simArrow} onPressIn={() => startSimMove( 0, -2)} onPressOut={stopSimMove}>
               <Text style={styles.simArrowText}>◀</Text>
             </Pressable>
             <View style={{ width: 36 }} />
-            <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p,  0,  2) : p)}>
+            <Pressable style={styles.simArrow} onPressIn={() => startSimMove( 0,  2)} onPressOut={stopSimMove}>
               <Text style={styles.simArrowText}>▶</Text>
             </Pressable>
           </View>
-          <Pressable style={styles.simArrow} onPress={() => setSimLocation(p => p ? nudgeLatLng(p, -2,  0) : p)}>
+          <Pressable style={styles.simArrow} onPressIn={() => startSimMove(-2,  0)} onPressOut={stopSimMove}>
             <Text style={styles.simArrowText}>▼</Text>
           </Pressable>
         </View>

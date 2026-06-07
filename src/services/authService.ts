@@ -35,20 +35,16 @@ export async function fetchRepositories(
   login: string,
   password: string,
 ): Promise<AuthRepository[]> {
-  console.log('[auth] login →', `${config.baseURL}/api/v1/auth/login`, { login });
   const res = await fetch(`${config.baseURL}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ login, password }),
   });
-  console.log('[auth] login status:', res.status);
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    console.warn('[auth] login error body:', body);
     throw new Error((body.detail as string) ?? `Erreur ${res.status}`);
   }
   const data = await res.json() as LoginResponse;
-  console.log('[auth] repositories:', data.repositories);
   return data.repositories ?? [];
 }
 
