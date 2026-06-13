@@ -63,6 +63,10 @@ import FormulaireZoneLibre from '../components/FormulaireZoneLibre';
 import FormulaireSemisBle from '../components/FormulaireSemisBle';
 import ReportCard, { type ReportProps } from '../components/ReportCard';
 import { ZoneDoseBubble, type ZoneBubbleInfo } from '../components/ZoneDoseBubble';
+import TracteurModeModal, { type TracteurMode } from '../components/TracteurModeModal';
+import CalibrationModal, { type CalibrationResult } from '../components/CalibrationModal';
+import AgriboxModal from '../components/AgriboxModal';
+import { computeTargetSetting, formatSetting } from '../utils/calibrationUtils';
 import { type SemisFormResponse } from '../services/agridroneService';
 import {
   bearingDeg, bearingToCompass, distanceMeters,
@@ -182,13 +186,12 @@ interface IconDef {
 const RIGHT_ICONS: IconDef[] = [
   { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet' },
   { id: 'logout',     lib: 'ion', name: 'log-out-outline',        tooltip: 'Déconnexion' },
-  { id: 'geolocate',  lib: 'ion', name: 'navigate-outline',       tooltip: 'Me localiser' },
   { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
   { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline',      tooltip: 'Étiquettes doses' },
   { id: 'attributs',  lib: 'ion', name: 'create-outline',        tooltip: 'Éditer les zones' },
   { id: 'formulaire', lib: 'ion', name: 'document-text-outline', tooltip: 'Formulaire parcelle' },
-  { id: 'tractor',    lib: 'mci', name: 'tractor',               tooltip: 'Exporter shapefile' },
+  { id: 'tractor',    lib: 'mci', name: 'tractor',               tooltip: 'Mode conduite / Shapefile' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,7 +311,7 @@ function RightIconBar({
   pinActive = false,
   dosesActive = false,
   editActive = false,
-  geolocateActive = false,
+  conduiteActive = false,
   visibleIds,
 }: {
   topOffset: number;
@@ -317,7 +320,7 @@ function RightIconBar({
   pinActive?: boolean;
   dosesActive?: boolean;
   editActive?: boolean;
-  geolocateActive?: boolean;
+  conduiteActive?: boolean;
   visibleIds?: string[];
 }) {
   const [tooltipId, setTooltipId] = useState<string | null>(null);
@@ -338,7 +341,7 @@ function RightIconBar({
           || (item.id === 'pin' && pinActive)
           || (item.id === 'doses' && dosesActive)
           || (item.id === 'attributs' && editActive)
-          || (item.id === 'geolocate' && geolocateActive);
+          || (item.id === 'tractor' && conduiteActive);
         return (
           <View key={item.id} style={{ position: 'relative' }}>
             {tooltipId === item.id && (
@@ -956,6 +959,16 @@ export default function HomeScreen() {
   const [zoneAllowRendement, setZoneAllowRendement] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
   const [isGeolocating, setIsGeolocating] = useState(false);
+  const [conduiteMode, setConduiteMode] = useState(false);
+  const conduiteModeRef = useRef(false);
+  const [tracteurModalVisible, setTracteurModalVisible] = useState(false);
+  const [calibrationModalVisible, setCalibrationModalVisible] = useState(false);
+  const [agriboxModalVisible, setAgriboxModalVisible] = useState(false);
+  const [agriboxFileUri, setAgriboxFileUri] = useState('');
+  const [agriboxFileName, setAgriboxFileName] = useState('');
+  const [pendingConduiteMode, setPendingConduiteMode] = useState<'vitesse' | 'dosage'>('vitesse');
+  const [calibration, setCalibration] = useState<CalibrationResult | null>(null);
+  const [currentSpeedKmh, setCurrentSpeedKmh] = useState<number | null>(null);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const geoMsgOpacity = useRef(new Animated.Value(0)).current;
   const [formulaireVisible, setFormulaireVisible] = useState(false);
@@ -1225,6 +1238,28 @@ export default function HomeScreen() {
     const currentDose = (currentZone.properties?.dose as number | null) ?? null;
     const unite = (currentZone.properties?.unite as string | undefined) ?? 'kg/ha';
 
+    const toSettingLabel = (dose: number | null): string | null => {
+      if (!calibration || dose === null) return null;
+      const v = computeTargetSetting(dose, calibration.points, calibration.mode);
+      return v !== null ? formatSetting(v, calibration.unite, calibration.mode) : null;
+    };
+
+    const speedGuidance = (() => {
+      if (!calibration || calibration.mode !== 'vitesse' || currentSpeedKmh === null || currentDose === null) return null;
+      const targetKmh = computeTargetSetting(currentDose, calibration.points, 'vitesse');
+      if (targetKmh === null || targetKmh <= 0) return null;
+      const deltaKmh = currentSpeedKmh - targetKmh;
+      const relDiff = Math.abs(deltaKmh) / targetKmh;
+      const TOLERANCE = 0.10;
+      let direction: 'ok' | 'accelerate' | 'decelerate' = 'ok';
+      let color = '#4CAF50';
+      if (relDiff > TOLERANCE) {
+        if (deltaKmh > 0) { direction = 'decelerate'; color = '#FF6B35'; }
+        else { direction = 'accelerate'; color = '#4FC3F7'; }
+      }
+      return { targetKmh, currentKmh: currentSpeedKmh, direction, deltaKmh, color };
+    })();
+
     // Chercher la zone avec dose différente la plus proche (seuil 10 m)
     // et dans la direction de déplacement (différence angulaire ≤ 90°)
     const THRESHOLD = 10;
@@ -1259,12 +1294,13 @@ export default function HomeScreen() {
         distanceM,
         dose: zoneDose,
         fillColor: getZoneDetailStyle(zone).fillColor,
+        settingLabel: toSettingLabel(zoneDose),
       };
     }
 
-    return { fillColor, dose: currentDose, unite, nextZone };
+    return { fillColor, dose: currentDose, unite, settingLabel: toSettingLabel(currentDose), speedGuidance, nextZone };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLocation, zones, selectedElement, movementBearing]);
+  }, [activeLocation, zones, selectedElement, movementBearing, calibration, currentSpeedKmh]);
 
   const centerOnParcelle = () => {
     if (selectedId === null) return;
@@ -1341,11 +1377,8 @@ export default function HomeScreen() {
     legendEntries.every(e => e.dose !== null && e.dose >= 0);
 
 
-  const handleTractorPress = async () => {
-    if (selectedId === null) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une parcelle');
-      return;
-    }
+  const handleExportShapefile = async () => {
+    if (selectedId === null) return;
     const dosedZones = zones.filter(z => {
       const raw = z.properties?.dose;
       const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
@@ -1390,7 +1423,6 @@ export default function HomeScreen() {
           });
           Alert.alert('✅ Enregistré', `${fileName}\nsauvegardé dans le dossier sélectionné.`);
         }
-        // Si l'utilisateur annule la sélection → rien
       } else {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/zip',
@@ -1402,6 +1434,120 @@ export default function HomeScreen() {
     } finally {
       setLoadingShapefile(false);
     }
+  };
+
+  const handleVerseConsole = async () => {
+    if (selectedId === null) return;
+    const dosedZones = zones.filter(z => {
+      const raw = z.properties?.dose;
+      const v = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseFloat(raw) : null;
+      return v !== null && !isNaN(v);
+    });
+    if (dosedZones.length === 0) {
+      Alert.alert('Erreur', 'Aucune dose disponible pour cette parcelle');
+      return;
+    }
+    const nomParcelle = features[selectedId]?.properties?.nom_parcel ?? 'parcelle';
+    const body = {
+      nom_parcelle: nomParcelle,
+      element: selectedElement,
+      zones: dosedZones.map(z => ({
+        geometry: z.geometry,
+        dose: z.properties!.dose,
+      })),
+    };
+    try {
+      setLoadingShapefile(true);
+      const buffer = await apiService.postArrayBuffer('/api/v1/parcelles/shapefile', body);
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      const fName = `${nomParcelle}_${selectedElement ?? 'zones'}_shapefile.zip`;
+      const fUri = (FileSystem.documentDirectory ?? '') + fName;
+      await FileSystem.writeAsStringAsync(fUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setAgriboxFileName(fName);
+      setAgriboxFileUri(fUri);
+      setAgriboxModalVisible(true);
+    } catch (err: unknown) {
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible de générer le shapefile');
+    } finally {
+      setLoadingShapefile(false);
+    }
+  };
+
+  const stopConduite = useCallback(() => {
+    locationSubRef.current?.remove();
+    locationSubRef.current = null;
+    setIsGeolocating(false);
+    setUserLocation(null);
+    setCurrentSpeedKmh(null);
+    setCalibration(null);
+    conduiteModeRef.current = false;
+    setConduiteMode(false);
+    stopSimMove();
+    setSimMode(false);
+  }, [stopSimMove]);
+
+  const handleStartConduite = useCallback(async () => {
+    if (!isGeolocating) {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', 'Activez la localisation dans les réglages.');
+        return;
+      }
+      setIsGeolocating(true);
+      const sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, distanceInterval: 5 },
+        loc => {
+          const pos = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            accuracy: loc.coords.accuracy ?? 10,
+          };
+          setUserLocation(pos);
+          if (loc.coords.speed !== null && loc.coords.speed >= 0) {
+            setCurrentSpeedKmh(loc.coords.speed * 3.6);
+          }
+          if (conduiteModeRef.current) {
+            mapRef.current?.animateToRegion(
+              { ...pos, latitudeDelta: 0.0008, longitudeDelta: 0.0008 },
+              500,
+            );
+          }
+        },
+      );
+      locationSubRef.current = sub;
+    }
+    conduiteModeRef.current = true;
+    setConduiteMode(true);
+  }, [isGeolocating]);
+
+  const handleTractorPress = () => {
+    if (selectedId === null) {
+      Alert.alert('Erreur', 'Veuillez sélectionner une parcelle');
+      return;
+    }
+    setTracteurModalVisible(true);
+  };
+
+  const handleModeSelect = (mode: TracteurMode) => {
+    setTracteurModalVisible(false);
+    if (mode === 'modulation') {
+      void handleVerseConsole();
+    } else {
+      if (conduiteMode) stopConduite();
+      setPendingConduiteMode(mode);
+      setCalibrationModalVisible(true);
+    }
+  };
+
+  const handleCalibrationConfirm = (result: CalibrationResult) => {
+    setCalibrationModalVisible(false);
+    setCalibration(result);
+    void handleStartConduite();
   };
 
   const handleSwitchProject = async () => {
@@ -1525,44 +1671,6 @@ export default function HomeScreen() {
         ],
       );
       return;
-    }
-    if (id === 'geolocate') {
-      if (isGeolocating) {
-        locationSubRef.current?.remove();
-        locationSubRef.current = null;
-        setIsGeolocating(false);
-        setUserLocation(null);
-        stopSimMove();
-        setSimMode(false);
-        return;
-      }
-      void (async () => {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission refusée', 'Activez la localisation dans les réglages.');
-          return;
-        }
-        setIsGeolocating(true);
-        const sub = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, distanceInterval: 5 },
-          loc => {
-            const pos = {
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-              accuracy: loc.coords.accuracy ?? 10,
-            };
-            setUserLocation(pos);
-            // Centrer uniquement au premier fix
-            if (!locationSubRef.current) return;
-            mapRef.current?.animateToRegion({
-              ...pos,
-              latitudeDelta: 0.0008,
-              longitudeDelta: 0.0008,
-            }, 800);
-          },
-        );
-        locationSubRef.current = sub;
-      })();
     }
     if (id === 'pin') setShowPrelevements(v => !v);
     if (id === 'doses') setShowDoseLabels(v => !v);
@@ -1904,11 +2012,10 @@ export default function HomeScreen() {
           pinActive={showPrelevements}
           dosesActive={showDoseLabels}
           editActive={editZoneMode}
-          geolocateActive={isGeolocating}
+          conduiteActive={conduiteMode}
           visibleIds={[
             'switch',
             'logout',
-            'geolocate',
             ...(zones.length > 0 && ['P','K','MG','S'].includes(selectedElement ?? '') ? ['screenshot'] : []),
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
@@ -1930,7 +2037,9 @@ export default function HomeScreen() {
         style={[styles.geoMsg, { opacity: geoMsgOpacity }]}
         pointerEvents="none">
         <Ionicons name="navigate" size={13} color="#fff" />
-        <Text style={styles.geoMsgText}>Géolocalisation activée</Text>
+        <Text style={styles.geoMsgText}>
+          {conduiteMode ? 'Mode conduite GPS activé' : 'Géolocalisation activée'}
+        </Text>
       </Animated.View>
 
 
@@ -2016,6 +2125,16 @@ export default function HomeScreen() {
         </View>
       )}
 
+
+      {/* ── Bouton sortie mode conduite ──────────────────────────────── */}
+      {conduiteMode && (
+        <Pressable
+          style={[styles.conduiteExitBtn, { bottom: insets.bottom + 8 }]}
+          onPress={stopConduite}>
+          <MaterialCommunityIcons name="tractor" size={16} color="#fff" />
+          <Text style={styles.conduiteExitText}>MODE CONDUITE  ·  Quitter</Text>
+        </Pressable>
+      )}
 
       {/* ── 5. Panneau rétractable bas ────────────────────────────────── */}
       <BottomPanel
@@ -2301,6 +2420,29 @@ export default function HomeScreen() {
         <LoginModal onSuccess={() => setIsAuthenticated(true)} />
       )}
       </View>{/* fin overlays UI */}
+
+      {/* ── Modal sélection mode tracteur ─────────────────────────────── */}
+      <TracteurModeModal
+        visible={tracteurModalVisible}
+        onClose={() => setTracteurModalVisible(false)}
+        onSelect={handleModeSelect}
+      />
+
+      {/* ── Modal calibration machine ──────────────────────────────────── */}
+      <CalibrationModal
+        visible={calibrationModalVisible}
+        mode={pendingConduiteMode}
+        onClose={() => setCalibrationModalVisible(false)}
+        onConfirm={handleCalibrationConfirm}
+      />
+
+      {/* ── Modal conversion Agribox ───────────────────────────────────── */}
+      <AgriboxModal
+        visible={agriboxModalVisible}
+        fileUri={agriboxFileUri}
+        fileName={agriboxFileName}
+        onClose={() => setAgriboxModalVisible(false)}
+      />
 
       {/* ── Modal changement de projet ─────────────────────────────────── */}
       <Modal visible={switchProjectVisible} transparent animationType="fade" onRequestClose={() => setSwitchProjectVisible(false)}>
@@ -2958,5 +3100,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     lineHeight: 13,
+  },
+
+  // ── Mode conduite ──────────────────────────────────────────────────────────
+  conduiteExitBtn: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#B71C1C',
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    zIndex: 200,
+    ...SHADOW,
+  },
+  conduiteExitText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
 });

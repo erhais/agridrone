@@ -29,6 +29,13 @@ async function buildHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
+// Pas de Content-Type : fetch positionne automatiquement le boundary multipart
+async function buildAuthHeader(): Promise<HeadersInit> {
+  const token = await loadToken();
+  if (!token) return {};
+  return { 'Authorization': `Bearer ${token}` };
+}
+
 async function handleResponse<T>(
   response: Response,
   retry: () => Promise<Response>,
@@ -48,7 +55,8 @@ async function handleResponse<T>(
     let detail = '';
     try {
       const body = await response.json() as Record<string, unknown>;
-      detail = (body.detail as string) ?? JSON.stringify(body);
+      const d = body.detail;
+      detail = Array.isArray(d) ? JSON.stringify(d) : typeof d === 'string' ? d : JSON.stringify(body);
     } catch {
       try { detail = await response.text(); } catch { /* ignore */ }
     }
@@ -101,6 +109,26 @@ export class ApiService {
       });
     const response = await doRequest();
     return handleResponse<T>(response, doRequest);
+  }
+
+  async postFormData<T>(path: string, formData: FormData): Promise<T> {
+    const url = `${this.baseURL}${path}`;
+    const doRequest = async () =>
+      this.fetchWithTimeout(url, {
+        method: 'POST',
+        headers: await buildAuthHeader(),
+        body: formData,
+      });
+    const response = await doRequest();
+    return handleResponse<T>(response, doRequest);
+  }
+
+  async getArrayBuffer(path: string): Promise<ArrayBuffer> {
+    const url = `${this.baseURL}${path}`;
+    const headers = await buildHeaders();
+    const response = await this.fetchWithTimeout(url, { method: 'GET', headers });
+    if (!response.ok) throw new ApiError(response.status, `Erreur HTTP ${response.status}`);
+    return response.arrayBuffer();
   }
 
   async postArrayBuffer(path: string, body: unknown): Promise<ArrayBuffer> {

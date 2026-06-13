@@ -440,3 +440,57 @@ export async function getParcelleDetails(
     `/api/v1/parcelles/${encodeURIComponent(String(idParcel))}/details?element=${encodeURIComponent(element)}`,
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversion Agribox
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ConversionConsole {
+  id: number;
+  model: string;
+  format: string;
+}
+
+export interface ConversionJobStart {
+  job_id: string;
+}
+
+export interface ConversionStatus {
+  message: string;
+  type: string;
+  done: boolean;
+  download_ready: boolean;
+  error: boolean;
+  filename?: string;
+}
+
+export async function getConversionConsoles(): Promise<ConversionConsole[]> {
+  return apiService.get<ConversionConsole[]>('/api/v1/conversion/consoles');
+}
+
+export async function lancerConversion(
+  fileUri: string,
+  fileName: string,
+  consoleId: number,
+  terminal: string,
+  format: string,
+  grid?: string,
+  produit?: string,
+): Promise<ConversionJobStart> {
+  const formData = new FormData();
+  formData.append('fichier', { uri: fileUri, name: fileName, type: 'application/zip' } as unknown as Blob);
+  formData.append('client', String(consoleId));
+  formData.append('terminal', terminal);
+  formData.append('format', format);
+  if (grid !== undefined) formData.append('grid', grid);
+  if (produit !== undefined) formData.append('produit', produit);
+  return apiService.postFormData<ConversionJobStart>('/api/v1/conversion/lancer', formData);
+}
+
+export async function getConversionStatus(jobId: string): Promise<ConversionStatus> {
+  return apiService.get<ConversionStatus>(`/api/v1/conversion/status/${encodeURIComponent(jobId)}`);
+}
+
+export async function downloadConversion(jobId: string): Promise<ArrayBuffer> {
+  return apiService.getArrayBuffer(`/api/v1/conversion/download/${encodeURIComponent(jobId)}`);
+}
