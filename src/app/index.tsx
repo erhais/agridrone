@@ -1246,8 +1246,16 @@ export default function HomeScreen() {
 
     const speedGuidance = (() => {
       if (!calibration || calibration.mode !== 'vitesse' || currentSpeedKmh === null || currentDose === null) return null;
+      const SENTINEL = { targetKmh: null as null, currentKmh: currentSpeedKmh, deltaKmh: 0 };
+      if (currentDose === 0) {
+        return { ...SENTINEL, direction: 'closed' as const, color: '#FF6B35' };
+      }
       const targetKmh = computeTargetSetting(currentDose, calibration.points, 'vitesse');
-      if (targetKmh === null || targetKmh <= 0) return null;
+      const MIN_KMH = 0.5;
+      const MAX_KMH = 25;
+      if (targetKmh === null || targetKmh < MIN_KMH || targetKmh > MAX_KMH) {
+        return { ...SENTINEL, direction: 'out_of_range' as const, color: '#FF9800' };
+      }
       const deltaKmh = currentSpeedKmh - targetKmh;
       const relDiff = Math.abs(deltaKmh) / targetKmh;
       const TOLERANCE = 0.10;

@@ -10,9 +10,9 @@ export interface NextZoneHint {
 }
 
 export interface SpeedGuidance {
-  targetKmh: number;
+  targetKmh: number | null;
   currentKmh: number;
-  direction: 'ok' | 'accelerate' | 'decelerate';
+  direction: 'ok' | 'accelerate' | 'decelerate' | 'closed' | 'out_of_range';
   deltaKmh: number;
   color: string;
 }
@@ -126,16 +126,24 @@ export function ZoneDoseBubble({ info, topOffset }: Props) {
           )}
           {info.speedGuidance && (
             <View style={styles.speedRow}>
-              <Text style={[styles.speedCurrent, { color: info.speedGuidance.color }]}>
-                {info.speedGuidance.currentKmh.toFixed(1)} km/h
-              </Text>
-              <Text style={[styles.speedHint, { color: info.speedGuidance.color }]}>
-                {info.speedGuidance.direction === 'ok'
-                  ? '✓'
-                  : info.speedGuidance.direction === 'decelerate'
-                  ? '↓ Ralentissez'
-                  : '↑ Accélérez'}
-              </Text>
+              {info.speedGuidance.direction === 'closed' ? (
+                <Text style={[styles.speedHint, { color: '#FF6B35' }]}>🚫 Fermer la vanne</Text>
+              ) : info.speedGuidance.direction === 'out_of_range' ? (
+                <Text style={[styles.speedHint, { color: '#FF9800' }]}>⚠ Dose hors plage</Text>
+              ) : (
+                <>
+                  <Text style={[styles.speedCurrent, { color: info.speedGuidance.color }]}>
+                    {info.speedGuidance.currentKmh.toFixed(1)} km/h
+                  </Text>
+                  <Text style={[styles.speedHint, { color: info.speedGuidance.color }]}>
+                    {info.speedGuidance.direction === 'ok'
+                      ? '✓'
+                      : info.speedGuidance.direction === 'decelerate'
+                      ? '↓ Ralentissez'
+                      : '↑ Accélérez'}
+                  </Text>
+                </>
+              )}
             </View>
           )}
         </View>
