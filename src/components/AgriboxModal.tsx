@@ -1,5 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as SecureStore from 'expo-secure-store';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 
 import {
@@ -31,6 +33,8 @@ interface Props {
 }
 
 const POLL_INTERVAL_MS = 3000;
+const STORE_CONSOLE_ID  = 'agribox_console_id';
+const STORE_FORMAT      = 'agribox_format';
 
 const GRILLE_OPTIONS = ['10', '8', '6', '4', '2'];
 
@@ -55,6 +59,8 @@ export default function AgriboxModal({ visible, fileUri, fileName, onClose }: Pr
   const [convertingFormat, setConvertingFormat] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const cardHeightsRef = useRef<Record<number, number>>({});
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -80,10 +86,26 @@ export default function AgriboxModal({ visible, fileUri, fileName, onClose }: Pr
     setDownloadFilename(null);
 
     getConversionConsoles()
-      .then(list => {
-setConsoles(list);
-        if (list.length > 0) setSelectedConsole(list[0]);
+      .then(async list => {
+        setConsoles(list);
+        const [savedId, savedFormat] = await Promise.all([
+          SecureStore.getItemAsync(STORE_CONSOLE_ID),
+          SecureStore.getItemAsync(STORE_FORMAT),
+        ]);
+        const preferred = savedId ? list.find(c => String(c.id) === savedId) : null;
+        const target = preferred ?? list[0] ?? null;
+        setSelectedConsole(target);
+        if (savedFormat) setSelectedFormat(savedFormat);
         setPhase('selecting');
+        if (target && preferred) {
+          const idx = list.indexOf(target);
+          setTimeout(() => {
+            const offset = Object.values(cardHeightsRef.current)
+              .slice(0, idx)
+              .reduce((sum, h) => sum + h, 0);
+            scrollRef.current?.scrollTo({ y: offset, animated: true });
+          }, 150);
+        }
       })
       .catch(err => {
         setErrorMessage((err as Error).message ?? 'Impossible de charger les consoles');
@@ -107,6 +129,8 @@ setConsoles(list);
     setPhase('converting');
     setConvertingFormat(activeFormat.toUpperCase());
     setStatusMessage('Envoi du fichier…');
+    void SecureStore.setItemAsync(STORE_CONSOLE_ID, String(selectedConsole.id)).catch(() => {});
+    void SecureStore.setItemAsync(STORE_FORMAT, activeFormat).catch(() => {});
     try {
       const info = await FileSystem.getInfoAsync(fileUri);
       if (!info.exists) {
@@ -201,13 +225,16 @@ setConsoles(list);
           {phase === 'selecting' && (
             <>
               <Text style={styles.sectionLabel}>Terminal</Text>
-              <ScrollView style={styles.consoleList} showsVerticalScrollIndicator={false}>
-                {consoles.map(c => {
+              <ScrollView ref={scrollRef} style={styles.consoleList} showsVerticalScrollIndicator={false}>
+                {consoles.map((c, idx) => {
                   const isSelected = selectedConsole?.id === c.id;
                   return (
                     <Pressable
                       key={c.id}
                       style={[styles.consoleCard, isSelected && styles.consoleCardSelected]}
+                      onLayout={(e: LayoutChangeEvent) => {
+                        cardHeightsRef.current[idx] = e.nativeEvent.layout.height;
+                      }}
                       onPress={() => { setSelectedConsole(c); setSelectedFormat(''); }}>
                       <MaterialCommunityIcons
                         name="controller-classic"
