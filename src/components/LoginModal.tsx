@@ -22,6 +22,7 @@ import {
   clearSession as clearAuthSession,
   type AuthRepository,
 } from '../services/authService';
+import ForgotPasswordModal from './ForgotPasswordModal';
 
 export { clearAuthSession as clearSession };
 
@@ -46,6 +47,7 @@ export default function LoginModal({ onSuccess }: Props) {
   const [error,        setError]        = useState('');
   const [loading,      setLoading]      = useState(false);
   const [noRepoCountdown, setNoRepoCountdown] = useState<number | null>(null);
+  const [forgotVisible, setForgotVisible]     = useState(false);
   const noRepoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -188,6 +190,10 @@ export default function LoginModal({ onSuccess }: Props) {
                   <Text style={styles.rememberText}>Se souvenir de moi (30 jours)</Text>
                 </Pressable>
 
+                <Pressable style={styles.forgotLink} onPress={() => setForgotVisible(true)}>
+                  <Text style={styles.forgotLinkText}>Mot de passe oublié ?</Text>
+                </Pressable>
+
                 {!!error && (
                   <View style={styles.errorRow}>
                     <Ionicons name="alert-circle-outline" size={13} color="#D32F2F" />
@@ -277,6 +283,8 @@ export default function LoginModal({ onSuccess }: Props) {
         <Text style={styles.footer}>© UseDrone · Expertises en cartographie agricole</Text>
 
       </KeyboardAvoidingView>
+
+      <ForgotPasswordModal visible={forgotVisible} onClose={() => setForgotVisible(false)} />
     </ImageBackground>
   );
 }
@@ -364,4 +372,6 @@ const styles = StyleSheet.create({
   backBtnText:      { fontSize: 13, color: '#7A9A5C', fontWeight: '600' },
 
   footer: { fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
+  forgotLink:     { alignSelf: 'flex-end' },
+  forgotLinkText: { fontSize: 12, color: '#5A8A2A', fontWeight: '600' },
 });
