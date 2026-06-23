@@ -1577,7 +1577,8 @@ export default function HomeScreen() {
 
   const handleSelectProject = async (repo: AuthRepository) => {
     setSwitchProjectVisible(false);
-    const token = await switchRepository(repo.cle);
+    setSwitchLoading(true);
+    const token = await switchRepository(repo.cle).finally(() => setSwitchLoading(false));
     if (!token) { Alert.alert('Erreur', 'Impossible de changer de projet.'); return; }
     // Réinitialiser la carte et recharger les parcelles du nouveau projet
     setFeatures([]);
@@ -1591,53 +1592,59 @@ export default function HomeScreen() {
   };
 
   const handleScreenshot = async () => {
-    // Charger culture + teneur engrais depuis l'API
-    const dbId = parcelleDbId ?? (selectedId !== null ? Number(
-      features[selectedId]?.properties?.id_parcel ??
-      features[selectedId]?.properties?.id ?? selectedId,
-    ) : null);
+    setCapturingMap(true);
+    try {
+      // Charger culture + teneur engrais depuis l'API
+      const dbId = parcelleDbId ?? (selectedId !== null ? Number(
+        features[selectedId]?.properties?.id_parcel ??
+        features[selectedId]?.properties?.id ?? selectedId,
+      ) : null);
 
-    if (dbId !== null && selectedElement && !['S','Z'].includes(selectedElement)) {
-      // Engrais : charger formulaire pour culture + teneur
-      const formData = await getFormulaireEngrais(dbId, selectedElement);
-      if (formData) {
-        const cultures = await getCultures().catch(() => []);
-        const culture = cultures.find((c: ReferentielItem) => c.id === formData.id_culture);
-        setReportCultureName(culture?.nom ?? null);
-        setReportTeneurEngrais(formData.teneur_engrais != null ? String(formData.teneur_engrais) : null);
-        setReportObjRendement(formData.obj_rendement != null ? String(formData.obj_rendement) : null);
+      if (dbId !== null && selectedElement && !['S','Z'].includes(selectedElement)) {
+        // Engrais : charger formulaire pour culture + teneur
+        const formData = await getFormulaireEngrais(dbId, selectedElement);
+        if (formData) {
+          const cultures = await getCultures().catch(() => []);
+          const culture = cultures.find((c: ReferentielItem) => c.id === formData.id_culture);
+          setReportCultureName(culture?.nom ?? null);
+          setReportTeneurEngrais(formData.teneur_engrais != null ? String(formData.teneur_engrais) : null);
+          setReportObjRendement(formData.obj_rendement != null ? String(formData.obj_rendement) : null);
+        } else {
+          setReportCultureName(null);
+          setReportTeneurEngrais(null);
+          setReportObjRendement(null);
+        }
+      } else if (selectedElement === 'S') {
+        setReportCultureName(semisCultureDefinie?.nom ?? null);
+        setReportTeneurEngrais(null);
+        setReportObjRendement(null);
       } else {
         setReportCultureName(null);
         setReportTeneurEngrais(null);
         setReportObjRendement(null);
       }
-    } else if (selectedElement === 'S') {
-      setReportCultureName(semisCultureDefinie?.nom ?? null);
-      setReportTeneurEngrais(null);
-      setReportObjRendement(null);
-    } else {
-      setReportCultureName(null);
-      setReportTeneurEngrais(null);
-      setReportObjRendement(null);
-    }
 
-    if (!mapRef.current) { setReportVisible(true); return; }
-    try {
-      const region = selectedId !== null
-        ? computeRegion([features[selectedId]], 1.5) ?? undefined
-        : undefined;
-      const { width } = Dimensions.get('window');
-      const uri = await mapRef.current.takeSnapshot({
-        width,
-        height: Math.round(width * 0.75),
-        region,
-        format: 'jpg',
-        quality: 0.9,
-        result: 'file',
-      });
-      setMapCaptureUri(uri);
-    } catch {
-      setMapCaptureUri(null);
+      if (mapRef.current) {
+        try {
+          const region = selectedId !== null
+            ? computeRegion([features[selectedId]], 1.5) ?? undefined
+            : undefined;
+          const { width } = Dimensions.get('window');
+          const uri = await mapRef.current.takeSnapshot({
+            width,
+            height: Math.round(width * 0.75),
+            region,
+            format: 'jpg',
+            quality: 0.9,
+            result: 'file',
+          });
+          setMapCaptureUri(uri);
+        } catch {
+          setMapCaptureUri(null);
+        }
+      }
+    } finally {
+      setCapturingMap(false);
     }
     setReportVisible(true);
   };
