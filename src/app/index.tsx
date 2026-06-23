@@ -192,7 +192,7 @@ const RIGHT_ICONS: IconDef[] = [
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline',        tooltip: 'Étiquettes doses',        label: 'Doses'    },
   { id: 'attributs',  lib: 'ion', name: 'create-outline',          tooltip: 'Éditer les zones',        label: 'Éditer'   },
   { id: 'formulaire', lib: 'ion', name: 'document-text-outline',   tooltip: 'Formulaire parcelle',     label: 'Fiche'    },
-  { id: 'tractor',    lib: 'mci', name: 'tractor',                 tooltip: 'Mode conduite / Shapefile', label: 'Conduite' },
+  { id: 'tractor',    lib: 'mci', name: 'tractor',                 tooltip: 'Mode conduite / Shapefile', label: 'Moduler' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
