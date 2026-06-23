@@ -186,7 +186,7 @@ interface IconDef {
 
 const RIGHT_ICONS: IconDef[] = [
   { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet',      label: 'Projet'   },
-  { id: 'logout',     lib: 'ion', name: 'log-out-outline',         tooltip: 'Déconnexion',             label: 'Quitter'  },
+  { id: 'logout',     lib: 'ion', name: 'log-out-outline',         tooltip: 'Déconnexion',             label: 'Quitter',  color: '#c0392b' },
   { id: 'screenshot', lib: 'ion', name: 'camera-outline',          tooltip: 'Capturer la parcelle',    label: 'Capture'  },
   { id: 'pin',        lib: 'ion', name: 'location-outline',        tooltip: 'Prélèvements',            label: 'Prélèv.'  },
   { id: 'doses',      lib: 'ion', name: 'pricetag-outline',        tooltip: 'Étiquettes doses',        label: 'Doses'    },
@@ -377,7 +377,7 @@ function RightIconBar({
                   }
                 />
               </View>
-              <Text style={[styles.iconLabel, active && styles.iconLabelActive]}>
+              <Text style={[styles.iconLabel, active && styles.iconLabelActive, item.color ? { color: item.color } : null]}>
                 {item.label}
               </Text>
             </Pressable>
