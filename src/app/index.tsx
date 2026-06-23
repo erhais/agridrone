@@ -181,17 +181,18 @@ interface IconDef {
   color?: string;
   bg?: string;
   tooltip: string;
+  label: string;
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet' },
-  { id: 'logout',     lib: 'ion', name: 'log-out-outline',        tooltip: 'Déconnexion' },
-  { id: 'screenshot', lib: 'ion', name: 'camera-outline',         tooltip: 'Capturer la parcelle' },
-  { id: 'pin',        lib: 'ion', name: 'location-outline',      tooltip: 'Prélèvements' },
-  { id: 'doses',      lib: 'ion', name: 'pricetag-outline',      tooltip: 'Étiquettes doses' },
-  { id: 'attributs',  lib: 'ion', name: 'create-outline',        tooltip: 'Éditer les zones' },
-  { id: 'formulaire', lib: 'ion', name: 'document-text-outline', tooltip: 'Formulaire parcelle' },
-  { id: 'tractor',    lib: 'mci', name: 'tractor',               tooltip: 'Mode conduite / Shapefile' },
+  { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet',      label: 'Projet'   },
+  { id: 'logout',     lib: 'ion', name: 'log-out-outline',         tooltip: 'Déconnexion',             label: 'Quitter'  },
+  { id: 'screenshot', lib: 'ion', name: 'camera-outline',          tooltip: 'Capturer la parcelle',    label: 'Capture'  },
+  { id: 'pin',        lib: 'ion', name: 'location-outline',        tooltip: 'Prélèvements',            label: 'Prélèv.'  },
+  { id: 'doses',      lib: 'ion', name: 'pricetag-outline',        tooltip: 'Étiquettes doses',        label: 'Doses'    },
+  { id: 'attributs',  lib: 'ion', name: 'create-outline',          tooltip: 'Éditer les zones',        label: 'Éditer'   },
+  { id: 'formulaire', lib: 'ion', name: 'document-text-outline',   tooltip: 'Formulaire parcelle',     label: 'Fiche'    },
+  { id: 'tractor',    lib: 'mci', name: 'tractor',                 tooltip: 'Mode conduite / Shapefile', label: 'Conduite' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +303,7 @@ function SearchBar({
 // 3. Barre d'icônes verticale (droite)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ICON_BTN_H = 54;
+const ICON_BTN_H = 64;
 
 function RightIconBar({
   topOffset,
@@ -368,7 +369,7 @@ function RightIconBar({
                 <Icon
                   lib={item.lib}
                   name={item.name}
-                  size={item.id === 'tractor' ? 28 : 24}
+                  size={item.id === 'tractor' ? 26 : 22}
                   color={
                     item.id === 'tractor' ? '#2E7D32'
                     : active ? '#2E7D32'
@@ -376,6 +377,9 @@ function RightIconBar({
                   }
                 />
               </View>
+              <Text style={[styles.iconLabel, active && styles.iconLabelActive]}>
+                {item.label}
+              </Text>
             </Pressable>
           </View>
         );
@@ -2680,10 +2684,22 @@ const styles = StyleSheet.create({
   },
   iconBtn: {
     width: 54,
-    height: 54,
+    height: 64,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
+    paddingBottom: 2,
+    gap: 2,
+  },
+  iconLabel: {
+    fontSize: 9,
+    color: '#546E7A',
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  iconLabelActive: {
+    color: '#2E7D32',
   },
   iconTooltip: {
     position: 'absolute',
