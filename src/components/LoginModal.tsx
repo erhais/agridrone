@@ -68,7 +68,9 @@ export default function LoginModal({ onSuccess }: Props) {
 
   // ── Étape 1 : vérification identifiants + liste dépôts ───────────────────
   const handleLogin = async () => {
-    if (!login.trim() || !password.trim()) {
+    const cleanLogin = login.trim();
+    const cleanPassword = password.trim();
+    if (!cleanLogin || !cleanPassword) {
       setError('Veuillez remplir tous les champs.');
       shake();
       return;
@@ -76,7 +78,7 @@ export default function LoginModal({ onSuccess }: Props) {
     setLoading(true);
     setError('');
     try {
-      const repos = await fetchRepositories(login.trim(), password);
+      const repos = await fetchRepositories(cleanLogin, cleanPassword);
       if (repos.length === 0) {
         setStep('no_repo');
         setNoRepoCountdown(5);
@@ -113,8 +115,10 @@ export default function LoginModal({ onSuccess }: Props) {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchToken(login.trim(), password, repo.cle);
-      await saveSession(data.access_token, data.expires_in, login.trim(), password, repo.cle, rememberMe);
+      const cleanLogin = login.trim();
+      const cleanPassword = password.trim();
+      const data = await fetchToken(cleanLogin, cleanPassword, repo.cle);
+      await saveSession(data.access_token, data.expires_in, cleanLogin, cleanPassword, repo.cle, rememberMe);
       onSuccess();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la connexion.');
