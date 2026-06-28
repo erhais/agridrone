@@ -72,7 +72,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "486283d8-ba11-4ab9-a5ad-2583fd650599"
+      }
     },
     "owner": "usedrone"
   }
