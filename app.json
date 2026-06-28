@@ -1,33 +1,33 @@
 {
   "expo": {
-    "name": "AgriDrone",
-    "slug": "agridrone",
-    "version": "1.1.0",
+    "name": "AES",
+    "slug": "aes",
+    "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "appagridrone",
+    "icon": "./assets/images/aes-icon.png",
+    "scheme": "appaes",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "fr.agridrone.app",
-      "buildNumber": "5",
+      "icon": "./assets/images/aes-icon.png",
+      "bundleIdentifier": "fr.aes.app",
+      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "AgriDrone utilise votre position pour afficher la dose à appliquer sur la zone en cours.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "AgriDrone utilise votre position pour afficher la dose à appliquer sur la zone en cours."
+        "NSLocationWhenInUseUsageDescription": "AES utilise votre position pour afficher la dose à appliquer sur la zone en cours.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "AES utilise votre position pour afficher la dose à appliquer sur la zone en cours."
       }
     },
     "android": {
-      "package": "fr.agridrone.app",
-      "versionCode": 5,
+      "package": "fr.aes.app",
+      "versionCode": 1,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBoEuDehwcu2LDxrAWlWjPeoTfSacY8bsM"
         }
       },
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#2B5F6E"
+        "foregroundImage": "./assets/images/aes-icon-foreground.png",
+        "backgroundColor": "#2E7A7B"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -51,8 +51,8 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#2B5F6E",
-          "image": "./assets/images/icon.png",
+          "backgroundColor": "#2E7A7B",
+          "image": "./assets/images/aes-icon-foreground.png",
           "imageWidth": 180
         }
       ],
@@ -62,8 +62,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Autoriser AgriDrone à accéder à vos photos.",
-          "savePhotosPermission": "Autoriser AgriDrone à enregistrer des photos.",
+          "photosPermission": "Autoriser AES à accéder à vos photos.",
+          "savePhotosPermission": "Autoriser AES à enregistrer des photos.",
           "isAccessMediaLocationEnabled": false
         }
       ]
@@ -72,10 +72,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "ac34700c-b61d-4391-a333-287b9133d0fd"
-      }
-    }
+      "router": {}
+    },
+    "owner": "usedrone"
   }
 }

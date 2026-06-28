@@ -26,7 +26,7 @@ import { WebView } from 'react-native-webview';
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.85;
 
-// Injection CSS pour ne montrer que le formulaire 1/2/3 + logo ARVALIS
+// Injection CSS pour ne montrer que le formulaire 1/2/3 + logo AES
 // Sélecteurs issus du HTML réel de fertiorga.arvalis-infos.fr
 const FERTIORGA_CLEAN_JS = `
 (function() {
@@ -477,7 +477,7 @@ export default function FormulaireEngrais({
         onRequestClose={() => setWebViewVisible(false)}>
         <View style={styles.wvContainer}>
           <View style={[styles.wvHeader, { paddingTop: (StatusBar.currentHeight ?? 0) + (Platform.OS === 'ios' ? 44 : 8) }]}>
-            <Text style={styles.wvTitle}>Fertiorga — ARVALIS</Text>
+            <Text style={styles.wvTitle}>Fertiorga — AES</Text>
             <Pressable onPress={() => setWebViewVisible(false)} style={styles.wvClose} hitSlop={12}>
               <Text style={styles.wvCloseText}>✕</Text>
             </Pressable>
