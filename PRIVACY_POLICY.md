@@ -4,18 +4,15 @@
 
 La présente politique de confidentialité décrit la manière dont l'application
 mobile **AgriDrone** (« l'Application ») collecte, utilise et protège vos
-données. L'Application est éditée par **EHATECH** (« nous », « l'Éditeur »).
-
-> _À compléter par l'éditeur :_ raison sociale complète, adresse postale,
-> e-mail de contact (ex. `contact@agridrone.fr`), numéro SIREN/SIRET.
+données. L'Application est éditée par **EHATECH SAS – USEDRONE** (« nous », « l'Éditeur »).
 
 ---
 
 ## 1. Responsable du traitement
 
-EHATECH
-_[Adresse postale complète]_
-E-mail : _[contact@agridrone.fr]_
+EHATECH SAS – USEDRONE
+10 grand' rue, 62450 Frémicourt, France
+E-mail : contact@usedrone.fr
 
 ## 2. Données que nous collectons
 
@@ -86,7 +83,7 @@ chiffrés via HTTPS.
 Conformément au Règlement Général sur la Protection des Données, vous disposez
 des droits d'**accès**, de **rectification**, d'**effacement**, de
 **limitation**, d'**opposition** et de **portabilité** de vos données. Vous
-pouvez les exercer en nous contactant à _[contact@agridrone.fr]_. Vous pouvez
+pouvez les exercer en nous contactant à contact@usedrone.fr. Vous pouvez
 également introduire une réclamation auprès de la CNIL (www.cnil.fr).
 
 ## 9. Données des enfants
@@ -102,4 +99,4 @@ cette page avec une nouvelle date de mise à jour.
 ## 11. Contact
 
 Pour toute question relative à cette politique ou à vos données personnelles :
-**EHATECH** — _[contact@agridrone.fr]_
+**EHATECH SAS – USEDRONE** — contact@usedrone.fr
