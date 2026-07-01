@@ -665,15 +665,15 @@ function MiniLegend({
 // 5. Panneau rétractable bas
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface AccordionState {
-  engrais: boolean;
-  semis: boolean;
-}
-
 const ENGRAIS_PILLS: { label: string; code: string }[] = [
   { label: 'phosphore', code: 'P' },
   { label: 'potassium', code: 'K' },
   { label: 'magnésie', code: 'MG' },
+];
+
+const SEMIS_PILLS: { label: string; code: string }[] = [
+  { label: 'semis conseillé', code: 'S' },
+  { label: 'zonage libre', code: 'Z' },
 ];
 
 interface BottomPanelProps {
@@ -741,14 +741,6 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
     ]).start();
   };
 
-  const [acc, setAcc] = useState<AccordionState>({
-    engrais: true,
-    semis: false,
-  });
-
-  const toggleAcc = (key: keyof AccordionState) =>
-    setAcc(prev => ({ ...prev, [key]: !prev[key] }));
-
   const handlePill = (code: string) =>
     onSelectElement(selectedElement === code ? null : code);
 
@@ -772,71 +764,21 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
           onContentSizeChange={handleContentSize}
           contentContainerStyle={[styles.panelScrollContent, { paddingBottom: safeBottom }]}>
 
-          <AccordionSection
+          <PanelSection
             title="ENGRAIS"
-            isOpen={acc.engrais}
-            onToggle={() => {
-              const opening = !acc.engrais;
-              toggleAcc('engrais');
-              // Sélectionne phosphore par défaut si aucun engrais actif
-              if (opening && !['P', 'K', 'MG'].includes(selectedElement ?? '')) {
-                onSelectElement('P');
-              }
-            }}>
-            <View style={styles.pillsRow}>
-              {ENGRAIS_PILLS.map(({ label, code }) => {
-                const active = selectedElement === code;
-                return (
-                  <Pressable
-                    key={code}
-                    onPress={() => handlePill(code)}
-                    style={({ pressed }) => [
-                      styles.pill,
-                      active && styles.pillActive,
-                      pressed && { opacity: 0.7 },
-                    ]}>
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </AccordionSection>
+            pills={ENGRAIS_PILLS}
+            selectedElement={selectedElement}
+            onPill={handlePill}
+          />
 
-          <View style={styles.panelDivider} />
+          <View style={styles.sectionDivider} />
 
-          <AccordionSection
+          <PanelSection
             title="SEMIS"
-            isOpen={acc.semis}
-            onToggle={() => {
-              const opening = !acc.semis;
-              toggleAcc('semis');
-              if (!opening && (selectedElement === 'S' || selectedElement === 'Z')) onSelectElement(null);
-            }}>
-            <View style={styles.pillsRow}>
-              {[
-                { code: 'S',  label: 'semis conseillé' },
-                { code: 'Z', label: 'zonage libre' },
-              ].map(({ code, label }) => {
-                const active = selectedElement === code;
-                return (
-                  <Pressable
-                    key={code}
-                    onPress={() => handlePill(code)}
-                    style={({ pressed }) => [
-                      styles.pill,
-                      active && styles.pillActive,
-                      pressed && { opacity: 0.7 },
-                    ]}>
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </AccordionSection>
+            pills={SEMIS_PILLS}
+            selectedElement={selectedElement}
+            onPill={handlePill}
+          />
 
         </ScrollView>
       </Animated.View>
@@ -844,33 +786,39 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
   );
 }
 
-function AccordionSection({
+function PanelSection({
   title,
-  isOpen,
-  onToggle,
-  children,
+  pills,
+  selectedElement,
+  onPill,
 }: {
   title: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  pills: { label: string; code: string }[];
+  selectedElement: string | null;
+  onPill: (code: string) => void;
 }) {
   return (
-    <View>
-      <Pressable
-        style={({ pressed }) => [
-          styles.accHeader,
-          pressed && { opacity: 0.7 },
-        ]}
-        onPress={onToggle}>
-        <Text style={styles.accTitle}>{title}</Text>
-        <Ionicons
-          name={isOpen ? 'chevron-up-outline' : 'chevron-down-outline'}
-          size={16}
-          color="#D32F2F"
-        />
-      </Pressable>
-      {isOpen && <View style={styles.accBody}>{children}</View>}
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>{title}</Text>
+      <View style={styles.pillsRow}>
+        {pills.map(({ label, code }) => {
+          const active = selectedElement === code;
+          return (
+            <Pressable
+              key={code}
+              onPress={() => onPill(code)}
+              style={({ pressed }) => [
+                styles.pill,
+                active && styles.pillActive,
+                pressed && { opacity: 0.7 },
+              ]}>
+              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -975,6 +923,12 @@ export default function HomeScreen() {
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState<number | null>(null);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const geoMsgOpacity = useRef(new Animated.Value(0)).current;
+  const warnOpacity = useRef(new Animated.Value(0)).current;
+  const [warnVisible, setWarnVisible] = useState(false);
+  const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successOpacity = useRef(new Animated.Value(0)).current;
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [formulaireVisible, setFormulaireVisible] = useState(false);
   const [loadingShapefile, setLoadingShapefile] = useState(false);
   const iconBarOpacity = useRef(new Animated.Value(0)).current;
@@ -1028,6 +982,11 @@ export default function HomeScreen() {
       setShowEditHint(false);
     }
   }, [editZoneMode]);
+
+  useEffect(() => () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!isGeolocating) {
@@ -1125,6 +1084,11 @@ export default function HomeScreen() {
     setShowDoseLabels(false);
     setEditZoneMode(false);
     setSelectedZoneIdx(null);
+    // Réinitialiser les données de Fiche : sinon elles restent « collées » à la
+    // parcelle précédente (ex. obj_rendement = -1) et invalident formValuesValid,
+    // ce qui masque à tort l'icône « Moduler ».
+    setLastFormulaireData(null);
+    setFormulaireId(null);
     setReloadTrigger(t => t + 1);
     const region = computeRegion([features[index]], 1.6);
     if (region) {
@@ -1349,28 +1313,46 @@ export default function HomeScreen() {
             `${result.zones_mises_a_jour} zone(s) mise(s) à jour\n${result.zones_dosage_manuel} zone(s) en dosage manuel`,
           );
         } else {
-          Alert.alert('Succès', 'Semis enregistré ✅');
+          showSuccess('Semis enregistré');
         }
       })
-      .catch(() => Alert.alert('Succès', 'Semis enregistré ✅'))
+      .catch(() => showSuccess('Semis enregistré'))
       .finally(() => setLoadingZones(false));
+  };
+
+  const showNoParcelleWarning = () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    setWarnVisible(true);
+    Animated.timing(warnOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    warnTimerRef.current = setTimeout(() => {
+      Animated.timing(warnOpacity, { toValue: 0, duration: 250, useNativeDriver: true })
+        .start(() => setWarnVisible(false));
+    }, 3500);
+  };
+
+  const handleWarnPress = () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    Animated.timing(warnOpacity, { toValue: 0, duration: 200, useNativeDriver: true })
+      .start(() => setWarnVisible(false));
+    setDropdownOpen(true);
+    searchInputRef.current?.focus();
+  };
+
+  const showSuccess = (msg: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSuccessMsg(msg);
+    Animated.timing(successOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    successTimerRef.current = setTimeout(() => {
+      Animated.timing(successOpacity, { toValue: 0, duration: 250, useNativeDriver: true })
+        .start(() => setSuccessMsg(null));
+    }, 2500);
   };
 
   const handleSelectElement = (code: string | null) => {
     setSelectedElement(code);
     if (code !== null) setCollapseSignal(s => s + 1);
     if (code !== null && selectedId === null) {
-      Alert.alert(
-        'Aucune parcelle sélectionnée',
-        'Sélectionnez d\'abord une parcelle pour afficher cette carte.',
-        [{
-          text: 'Choisir une parcelle',
-          onPress: () => {
-            setDropdownOpen(true);
-            searchInputRef.current?.focus();
-          },
-        }],
-      );
+      showNoParcelleWarning();
     } else if (code !== null && selectedId !== null) {
       const region = computeRegion([features[selectedId]], 1.6);
       if (region) mapRef.current?.animateToRegion(region, 600);
@@ -2061,6 +2043,30 @@ export default function HomeScreen() {
         </Text>
       </Animated.View>
 
+      {/* ── Avertissement : aucune parcelle sélectionnée ─────────────── */}
+      {warnVisible && (
+        <Animated.View style={[styles.warnMsgWrap, { opacity: warnOpacity }]}>
+          <Pressable style={styles.warnMsg} onPress={handleWarnPress}>
+            <Ionicons name="warning" size={16} color="#fff" />
+            <Text style={styles.warnMsgText}>
+              Aucune parcelle sélectionnée — appuyez pour en choisir une
+            </Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* ── Confirmation : enregistrement réussi ─────────────────────── */}
+      {successMsg && (
+        <Animated.View
+          style={[styles.successMsgWrap, { opacity: successOpacity }]}
+          pointerEvents="none">
+          <View style={styles.successMsg}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.successMsgText}>{successMsg}</Text>
+          </View>
+        </Animated.View>
+      )}
+
 
       {/* ── Message mode édition zone ────────────────────────────────── */}
       {editZoneMode && selectedZoneIdx === null && showEditHint && (
@@ -2219,7 +2225,7 @@ export default function HomeScreen() {
               setFlashZoneNum(data.num_zone);
               flashTimerRef.current = setTimeout(() => setFlashZoneNum(null), 700);
               setLegendExpanded(true);
-              Alert.alert('Succès', 'Zone enregistrée ✅');
+              showSuccess('Zone enregistrée');
             }
             setZoneFormVisible(false);
             setSelectedZoneIdx(null);
@@ -2263,7 +2269,7 @@ export default function HomeScreen() {
               })
               .catch(() => {})
               .finally(() => setLoadingZones(false));
-            Alert.alert('Succès', 'Zone enregistrée ✅');
+            showSuccess('Zone enregistrée');
           }}
         />
       )}
@@ -2293,7 +2299,7 @@ export default function HomeScreen() {
           onSave={() => {
             setZoneSemisFormVisible(false);
             setSelectedZoneIdx(null);
-            Alert.alert('Succès', 'Zone semis enregistrée ✅');
+            showSuccess('Zone semis enregistrée');
             // Recharger les zones semis
             const dbId = parcelleDbId ?? Number(
               features[selectedId]?.properties?.id_parcel ??
@@ -2426,7 +2432,7 @@ export default function HomeScreen() {
                   if (hasDoses) setShowDoseLabels(true);
                 })
                 .catch(() => {});
-              Alert.alert('Succès', 'Formulaire enregistré ✅');
+              showSuccess('Formulaire enregistré');
             } catch (err: unknown) {
               Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible d\'enregistrer le formulaire');
             }
@@ -2748,12 +2754,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   panelTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#2B5F6E',
     letterSpacing: 0.2,
   },
   panelDivider: {
@@ -2762,28 +2768,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
   },
   panelScrollContent: {
-    paddingTop: 2,
-    paddingBottom: 12,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
 
-  // ── Accordéon ──────────────────────────────────────────────────────────────
-  accHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // ── Sections (plates) ───────────────────────────────────────────────────────
+  section: {
     paddingHorizontal: 18,
-    paddingVertical: 16,
-    minHeight: 48,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
-  accTitle: {
-    fontSize: 12,
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#D32F2F',
-    letterSpacing: 1.4,
+    color: '#1B5E20',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
-  accBody: {
-    paddingHorizontal: 18,
-    paddingBottom: 10,
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#ECECEC',
+    marginHorizontal: 18,
+    marginVertical: 2,
   },
 
   // ── Pills ──────────────────────────────────────────────────────────────────
@@ -2794,17 +2800,20 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   pill: {
-    backgroundColor: '#EEEEEE',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    backgroundColor: '#F2F4F5',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#DCE3E5',
   },
   pillActive: {
-    backgroundColor: '#FF6B00',
+    backgroundColor: '#2B5F6E',
+    borderColor: '#2B5F6E',
   },
   pillText: {
-    fontSize: 11,
-    color: '#555',
+    fontSize: 12,
+    color: '#4A5A5F',
     fontWeight: '500',
   },
   pillTextActive: {
@@ -2986,6 +2995,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '500',
+  },
+  warnMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '88%',
+    zIndex: 96,
+  },
+  warnMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F57C00',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    ...SHADOW,
+  },
+  warnMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  successMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '88%',
+    zIndex: 96,
+  },
+  successMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2E7D32',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    ...SHADOW,
+  },
+  successMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
   },
   editZoneHint: {
     position: 'absolute',

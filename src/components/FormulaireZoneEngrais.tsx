@@ -17,12 +17,16 @@ import {
   View,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { ApiError } from '../services/api';
 import { apiService } from '../services/api';
 import { type EngraisZoneDetail, type TypeSolItem } from '../services/agridroneService';
 
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.9;
+
+// Couleur d'accent charte (vert foncé) — en-tête, bouton principal, coches
+const ACCENT = '#1B5E20';
 
 const ELEMENT_LABELS: Record<string, string> = {
   P: 'Phosphore', K: 'Potassium', MG: 'Magnésie',
@@ -35,7 +39,7 @@ function Checkbox({ value, onValueChange, label }: {
   return (
     <Pressable style={styles.checkRow} onPress={() => onValueChange(!value)}>
       <View style={[styles.checkBox, value && styles.checkBoxChecked]}>
-        {value && <Text style={styles.checkMark}>✓</Text>}
+        {value && <Ionicons name="checkmark" size={15} color="#fff" />}
       </View>
       <Text style={styles.checkLabel}>{label}</Text>
     </Pressable>
@@ -215,7 +219,7 @@ export default function FormulaireZoneEngrais({
 
   const element = zone.properties.element ?? 'P';
   const elementLabel = ELEMENT_LABELS[element] ?? element;
-  const sectionColor = zone.style?.fillColor ?? '#3B6D11';
+  const sectionColor = zone.style?.fillColor ?? ACCENT;
 
   return (
     <Animated.View
@@ -387,19 +391,19 @@ export default function FormulaireZoneEngrais({
         {/* Boutons */}
         <View style={styles.buttons}>
           <Pressable
-            style={[styles.btn, styles.btnAlt, saving && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.btn, styles.btnPrimary, (saving || pressed) && { opacity: 0.85 }]}
             onPress={() => { void handleSave(); }}
             disabled={saving}>
             {saving
-              ? <ActivityIndicator size="small" color="#3B6D11" />
-              : <Text style={styles.btnAltText}>Enregistrer</Text>
+              ? <ActivityIndicator size="small" color={ACCENT} />
+              : <Text style={styles.btnPrimaryText}>Enregistrer</Text>
             }
           </Pressable>
           <Pressable
-            style={({ pressed }) => [styles.btn, styles.btnAlt, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && { opacity: 0.7 }]}
             onPress={close}
             disabled={saving}>
-            <Text style={styles.btnAltText}>Annuler</Text>
+            <Text style={styles.btnGhostText}>Annuler</Text>
           </Pressable>
         </View>
 
@@ -417,19 +421,19 @@ const styles = StyleSheet.create({
   },
   sheet: {
     height: SHEET_H,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    backgroundColor: '#F4F6F4',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   handleContainer: { alignItems: 'center', paddingVertical: 10 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D0D0D0' },
+  handle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#CBD2CB' },
   header: {
-    backgroundColor: '#3B6D11',
-    borderRadius: 6,
+    backgroundColor: ACCENT,
+    borderRadius: 12,
     marginHorizontal: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    marginBottom: 12,
   },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zoneColorDot: {
@@ -437,56 +441,72 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(255,255,255,0.7)',
   },
-  headerTitle:    { fontSize: 15, fontWeight: '700', color: '#fff' },
-  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 3 },
+  headerTitle:    { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+  headerSubtitle: { fontSize: 12.5, color: 'rgba(255,255,255,0.85)', marginTop: 3 },
   scroll:         { flex: 1 },
   scrollContent:  { paddingHorizontal: 14, paddingBottom: 16, gap: 12 },
   section: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    padding: 12,
-    paddingTop: 14,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingRight: 14,
+    paddingLeft: 16,
     gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E6EAE6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
   },
-  sectionAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, borderRadius: 8 },
-  sectionTitle:  { fontSize: 12, fontWeight: '700', color: '#555', letterSpacing: 0.8, marginLeft: 8 },
-  field:         { gap: 4 },
+  sectionAccent: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
+    borderTopLeftRadius: 14, borderBottomLeftRadius: 14,
+  },
+  sectionTitle: {
+    fontSize: 12, fontWeight: '800', color: ACCENT,
+    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 2,
+  },
+  field:         { gap: 5 },
   fieldRow:      { flexDirection: 'row', gap: 10 },
-  label:         { fontSize: 12, fontWeight: '600', color: '#444' },
+  label:         { fontSize: 12.5, fontWeight: '600', color: '#3A423A' },
   input: {
-    height: 40, borderWidth: 1, borderColor: '#D0D0D0',
-    borderRadius: 8, paddingHorizontal: 10,
-    fontSize: 13, color: '#333', backgroundColor: '#fff',
+    height: 44, borderWidth: 1, borderColor: '#D5DAD5',
+    borderRadius: 10, paddingHorizontal: 12,
+    fontSize: 14, color: '#222', backgroundColor: '#fff',
   },
-  inputReadonly: { backgroundColor: '#E8E8E8', color: '#888' },
+  inputReadonly: { backgroundColor: '#F1F3F1', color: '#8A8F8A', borderColor: '#E3E6E3' },
   readonlyBox: {
-    height: 40, borderWidth: 1, borderColor: '#E0E0E0',
-    borderRadius: 8, paddingHorizontal: 10,
-    justifyContent: 'center', backgroundColor: '#E8E8E8',
+    height: 44, borderWidth: 1, borderColor: '#E3E6E3',
+    borderRadius: 10, paddingHorizontal: 12,
+    justifyContent: 'center', backgroundColor: '#F1F3F1',
   },
-  readonlyText:  { fontSize: 13, color: '#666' },
-  pickerWrapper: { borderWidth: 1, borderColor: '#D0D0D0', borderRadius: 8, backgroundColor: '#FAFAFA' },
-  picker:        { color: '#333', width: '100%' },
-  pickerItem:    { fontSize: 13, color: '#333' },
-  checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  readonlyText:  { fontSize: 14, color: '#555' },
+  pickerWrapper: { borderWidth: 1, borderColor: '#D5DAD5', borderRadius: 10, backgroundColor: '#FAFBFA' },
+  picker:        { color: '#222', width: '100%' },
+  pickerItem:    { fontSize: 14, color: '#222' },
+  checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 2 },
   checkBox: {
-    width: 20, height: 20, borderRadius: 4,
-    borderWidth: 1.5, borderColor: '#9E9E9E',
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 1.5, borderColor: '#B0B7B0',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff',
   },
-  checkBoxChecked: { backgroundColor: '#3B6D11', borderColor: '#3B6D11' },
-  checkMark:     { fontSize: 12, color: '#fff', fontWeight: '700', lineHeight: 14 },
-  checkLabel:    { fontSize: 12, color: '#444', flex: 1 },
+  checkBoxChecked: { backgroundColor: ACCENT, borderColor: ACCENT },
+  checkLabel:    { fontSize: 13, color: '#3A423A', flex: 1, fontWeight: '500' },
   buttons: {
     flexDirection: 'row',
-    backgroundColor: '#3B6D11',
+    backgroundColor: ACCENT,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    paddingVertical: 12,
+    gap: 10,
   },
-  btn:    { flex: 1, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  btnAlt: { backgroundColor: '#fff' },
-  btnAltText: { fontSize: 13, fontWeight: '700', color: '#3B6D11' },
+  btn: { flex: 1, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  btnPrimary: { backgroundColor: '#fff' },
+  btnPrimaryText: { fontSize: 14, fontWeight: '700', color: ACCENT },
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)' },
+  btnGhostText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 });
