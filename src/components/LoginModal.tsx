@@ -118,7 +118,7 @@ export default function LoginModal({ onSuccess }: Props) {
       const cleanLogin = login.trim();
       const cleanPassword = password.trim();
       const data = await fetchToken(cleanLogin, cleanPassword, repo.cle);
-      await saveSession(data.access_token, data.expires_in, cleanLogin, cleanPassword, repo.cle, rememberMe);
+      await saveSession(data.access_token, data.expires_in, cleanLogin, cleanPassword, repo.cle, rememberMe, data.nom, data.prenom);
       onSuccess();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la connexion.');

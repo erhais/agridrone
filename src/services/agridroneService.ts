@@ -139,6 +139,8 @@ export interface Prelevement {
   nom: string;
   lat: number;
   lng: number;
+  num_zone?: number | null;   // zone du prélèvement — couleur unique du marqueur par zone
+  ech?: string | null;        // n° d'échantillon (ana_sol_data.ech) — identifie le PDF d'analyse
 }
 
 export interface ParcelleDetails {

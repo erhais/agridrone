@@ -17,6 +17,8 @@ interface TokenResponse {
   access_token: string;
   expires_in: number;   // secondes (ex: 86400)
   token_type?: string;
+  nom?: string | null;      // nom de famille de l'utilisateur connecté (ajouté au BO)
+  prenom?: string | null;   // prénom de l'utilisateur connecté (ajouté au BO)
 }
 
 // ── Clés SecureStore ──────────────────────────────────────────────────────────
@@ -27,6 +29,8 @@ const KEY_LOGIN        = 'agridrone_login';
 const KEY_PASSWORD     = 'agridrone_password';        // chiffré par SecureStore
 const KEY_REPOSITORY   = 'agridrone_repository';
 const KEY_CREDS_EXPIRY = 'agridrone_creds_expiry';   // timestamp 30 jours
+const KEY_NOM          = 'agridrone_nom';            // identité de session (menu Compte)
+const KEY_PRENOM       = 'agridrone_prenom';
 const REMEMBER_MS      = 30 * 24 * 60 * 60 * 1000;  // 30 jours
 
 // ── API calls ─────────────────────────────────────────────────────────────────
@@ -74,26 +78,29 @@ export async function saveSession(
   password: string,
   repository: string,
   rememberMe = false,
+  nom: string | null = null,
+  prenom: string | null = null,
 ): Promise<void> {
   const tokenExpiryMs = Date.now() + expiresIn * 1000;
   const ops: Promise<void>[] = [
     SecureStore.setItemAsync(KEY_TOKEN,  token),
     SecureStore.setItemAsync(KEY_EXPIRY, String(tokenExpiryMs)),
+    // Identité de session — non sensible, toujours stockée pour le menu Compte
+    SecureStore.setItemAsync(KEY_LOGIN,      login),
+    SecureStore.setItemAsync(KEY_REPOSITORY, repository),
+    nom    ? SecureStore.setItemAsync(KEY_NOM, nom)       : SecureStore.deleteItemAsync(KEY_NOM),
+    prenom ? SecureStore.setItemAsync(KEY_PRENOM, prenom) : SecureStore.deleteItemAsync(KEY_PRENOM),
   ];
   if (rememberMe) {
     const credsExpiryMs = Date.now() + REMEMBER_MS;
     ops.push(
-      SecureStore.setItemAsync(KEY_LOGIN,        login),
       SecureStore.setItemAsync(KEY_PASSWORD,     password),
-      SecureStore.setItemAsync(KEY_REPOSITORY,   repository),
       SecureStore.setItemAsync(KEY_CREDS_EXPIRY, String(credsExpiryMs)),
     );
   } else {
-    // Pas de mémorisation : effacer les credentials existants
+    // Pas de mémorisation : effacer uniquement les identifiants d'auto-reconnexion
     ops.push(
-      SecureStore.deleteItemAsync(KEY_LOGIN),
       SecureStore.deleteItemAsync(KEY_PASSWORD),
-      SecureStore.deleteItemAsync(KEY_REPOSITORY),
       SecureStore.deleteItemAsync(KEY_CREDS_EXPIRY),
     );
   }
@@ -126,7 +133,7 @@ export async function refreshToken(): Promise<string | null> {
   try {
     const data = await fetchToken(login, password, repository);
     // Conserver rememberMe=true puisque les credentials existent
-    await saveSession(data.access_token, data.expires_in, login, password, repository, true);
+    await saveSession(data.access_token, data.expires_in, login, password, repository, true, data.nom, data.prenom);
     return data.access_token;
   } catch {
     return null;
@@ -141,19 +148,25 @@ export async function clearSession(): Promise<void> {
     SecureStore.deleteItemAsync(KEY_PASSWORD),
     SecureStore.deleteItemAsync(KEY_REPOSITORY),
     SecureStore.deleteItemAsync(KEY_CREDS_EXPIRY),
+    SecureStore.deleteItemAsync(KEY_NOM),
+    SecureStore.deleteItemAsync(KEY_PRENOM),
   ]);
 }
 
 export async function getStoredCredentials(): Promise<{
   login: string;
   repository: string;
+  nom: string | null;
+  prenom: string | null;
 } | null> {
-  const [login, repository] = await Promise.all([
+  const [login, repository, nom, prenom] = await Promise.all([
     SecureStore.getItemAsync(KEY_LOGIN),
     SecureStore.getItemAsync(KEY_REPOSITORY),
+    SecureStore.getItemAsync(KEY_NOM),
+    SecureStore.getItemAsync(KEY_PRENOM),
   ]);
   if (!login || !repository) return null;
-  return { login, repository };
+  return { login, repository, nom, prenom };
 }
 
 // Récupère les dépôts disponibles pour l'utilisateur mémorisé
@@ -179,7 +192,7 @@ export async function switchRepository(repoCle: string): Promise<string | null> 
   if (!login || !password) return null;
   try {
     const data = await fetchToken(login, password, repoCle);
-    await saveSession(data.access_token, data.expires_in, login, password, repoCle, true);
+    await saveSession(data.access_token, data.expires_in, login, password, repoCle, true, data.nom, data.prenom);
     return data.access_token;
   } catch {
     return null;
