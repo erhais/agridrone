@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "fr.agridrone.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "AgriDrone utilise votre position pour afficher la dose à appliquer sur la zone en cours.",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "fr.agridrone.app",
-      "versionCode": 5,
+      "versionCode": 6,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBoEuDehwcu2LDxrAWlWjPeoTfSacY8bsM"
