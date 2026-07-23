@@ -220,7 +220,7 @@ export default function LoginModal({ onSuccess }: Props) {
               <Ionicons name="warning-outline" size={40} color="#E65100" style={{ marginBottom: 16 }} />
               <Text style={styles.noRepoTitle}>Aucun projet Agridrone</Text>
               <Text style={styles.noRepoText}>
-                Aucun projet Agridrone n'est rattaché à votre compte.
+                Aucun projet Agridrone n’est rattaché à votre compte.
               </Text>
               <Text style={styles.noRepoCountdown}>
                 Déconnexion dans {noRepoCountdown}s…

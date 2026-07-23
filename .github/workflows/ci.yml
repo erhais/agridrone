@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   test:
-    name: Vérification des types + tests
+    name: Lint + types + tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,6 +26,9 @@ jobs:
 
       - name: Installer les dépendances
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Vérification des types
         run: npx tsc --noEmit

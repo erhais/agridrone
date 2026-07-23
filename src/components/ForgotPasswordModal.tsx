@@ -68,7 +68,7 @@ export default function ForgotPasswordModal({ visible, onClose }: Props) {
             <View style={s.successBlock}>
               <Ionicons name="checkmark-circle-outline" size={52} color="#3A6B10" />
               <Text style={s.successText}>
-                Si un compte correspond à ces informations, un email de réinitialisation vient d'être envoyé.
+                Si un compte correspond à ces informations, un email de réinitialisation vient d’être envoyé.
               </Text>
               <TouchableOpacity style={s.btn} onPress={handleClose}>
                 <Text style={s.btnText}>Fermer</Text>
@@ -77,7 +77,7 @@ export default function ForgotPasswordModal({ visible, onClose }: Props) {
           ) : (
             <>
               <Text style={s.hint}>
-                Saisissez votre identifiant et l'adresse email associée à votre compte.
+                Saisissez votre identifiant et l’adresse email associée à votre compte.
               </Text>
 
               <View style={s.inputGroup}>
