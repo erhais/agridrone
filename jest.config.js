@@ -1,6 +1,9 @@
 module.exports = {
   preset: 'jest-expo',
   testMatch: ['**/__tests__/**/*.test.ts?(x)', '**/?(*.)+(spec|test).ts?(x)'],
+  // En CI (cache Babel froid), le 1er render() d'un worker transforme
+  // react-native/reanimated et peut dépasser le défaut de 5 s → marge élargie.
+  testTimeout: 30000,
   // Les worktrees Git dupliquent package.json/app.json → collision de modules Haste.
   modulePathIgnorePatterns: ['<rootDir>/.claude/worktrees/'],
   // Alias d'import identiques à ceux du bundler (voir tsconfig / babel).
