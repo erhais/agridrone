@@ -147,9 +147,11 @@ export default function FormulaireEngrais({
         setCultures(c);
         setFrequences(f);
         setPailleOptions(p);
-        if (c.length > 0) setIdCulture(c[0].id);
-        if (f.length > 0) setIdFrequence(f[0].id);
-        setIdPaille(p[0].id);
+        // Ne poser le 1er élément par défaut que si rien n'est déjà sélectionné :
+        // en édition, l'effet `initialData` a déjà renseigné la valeur — ne pas l'écraser.
+        if (c.length > 0) setIdCulture(prev => (prev > 0 ? prev : c[0].id));
+        if (f.length > 0) setIdFrequence(prev => (prev > 0 ? prev : f[0].id));
+        setIdPaille(prev => (prev > 0 ? prev : p[0].id));
       })
       .finally(() => setLoadingRef(false));
   }, []);
