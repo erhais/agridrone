@@ -41,3 +41,14 @@ example
 # generated native folders
 /ios
 /android
+
+# build & design artifacts (hors code source)
+/build/
+/screenshot/
+/agrimodule-bg.png
+/arvalis.png
+
+# Claude Code — état local / éphémère (les skills partagés restent versionnables)
+.claude/worktrees/
+.claude/projects/
+.claude/settings.local.json

@@ -22,6 +22,9 @@ import { patchZoneSemis, type TypeSolItem } from '../services/agridroneService';
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.55;
 
+// Couleur d'accent charte (vert foncé) — en-tête, bouton principal, champ dose
+const ACCENT = '#1B5E20';
+
 interface ZoneProps {
   num_zone: number;
   properties: {
@@ -125,7 +128,7 @@ export default function FormulaireZoneLibre({
   };
 
   const zoneLabel   = String.fromCharCode(64 + (zone.properties.id_class ?? zone.num_zone));
-  const fillColor   = zone.style?.fillColor ?? '#3B6D11';
+  const fillColor   = zone.style?.fillColor ?? ACCENT;
   const modeLabel   = FERTILISANT_LABELS[fertilisant] ?? fertilisant;
 
   return (
@@ -207,19 +210,19 @@ export default function FormulaireZoneLibre({
         {/* Boutons */}
         <View style={styles.buttons}>
           <Pressable
-            style={[styles.btn, styles.btnSave, saving && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.btn, styles.btnPrimary, (saving || pressed) && { opacity: 0.85 }]}
             onPress={() => { void handleSave(); }}
             disabled={saving}>
             {saving
-              ? <ActivityIndicator size="small" color="#3B6D11" />
-              : <Text style={styles.btnSaveText}>Enregistrer</Text>
+              ? <ActivityIndicator size="small" color={ACCENT} />
+              : <Text style={styles.btnPrimaryText}>Enregistrer</Text>
             }
           </Pressable>
           <Pressable
-            style={({ pressed }) => [styles.btn, styles.btnCancel, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && { opacity: 0.7 }]}
             onPress={close}
             disabled={saving}>
-            <Text style={styles.btnCancelText}>Annuler</Text>
+            <Text style={styles.btnGhostText}>Annuler</Text>
           </Pressable>
         </View>
 
@@ -237,80 +240,86 @@ const styles = StyleSheet.create({
   },
   sheet: {
     height: SHEET_H,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    backgroundColor: '#F4F6F4',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   handleContainer: { alignItems: 'center', paddingVertical: 10 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D0D0D0' },
+  handle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#CBD2CB' },
   header: {
-    backgroundColor: '#3B6D11',
-    borderRadius: 6,
+    backgroundColor: ACCENT,
+    borderRadius: 12,
     marginHorizontal: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    marginBottom: 14,
   },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   colorDot: {
     width: 14, height: 14, borderRadius: 7,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)',
   },
-  headerTitle:    { fontSize: 15, fontWeight: '700', color: '#fff' },
-  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 3 },
+  headerTitle:    { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+  headerSubtitle: { fontSize: 12.5, color: 'rgba(255,255,255,0.85)', marginTop: 3 },
 
   infoSection: {
-    marginHorizontal: 16,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
+    marginHorizontal: 14,
+    backgroundColor: '#fff',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    marginBottom: 16,
+    marginBottom: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E6EAE6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 13,
   },
-  separator:  { height: StyleSheet.hairlineWidth, backgroundColor: '#E0E0E0' },
-  infoLabel:     { fontSize: 13, color: '#666' },
-  infoValue:     { fontSize: 13, fontWeight: '600', color: '#222', flex: 1, textAlign: 'right' },
-  pickerWrapper: { flex: 1, borderWidth: 1, borderColor: '#D0D0D0', borderRadius: 8, backgroundColor: '#FAFAFA' },
-  picker:        { color: '#333', width: '100%' },
-  pickerItem:    { fontSize: 13, color: '#333' },
+  separator:  { height: StyleSheet.hairlineWidth, backgroundColor: '#ECEFEC' },
+  infoLabel:     { fontSize: 13, color: '#3A423A' },
+  infoValue:     { fontSize: 13.5, fontWeight: '600', color: '#222', flex: 1, textAlign: 'right' },
+  pickerWrapper: { flex: 1, borderWidth: 1, borderColor: '#D5DAD5', borderRadius: 10, backgroundColor: '#FAFBFA' },
+  picker:        { color: '#222', width: '100%' },
+  pickerItem:    { fontSize: 14, color: '#222' },
 
   doseSection: {
-    marginHorizontal: 16,
+    marginHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginBottom: 16,
   },
-  doseLabel: { fontSize: 14, fontWeight: '600', color: '#333', width: 50 },
+  doseLabel: { fontSize: 14, fontWeight: '600', color: '#3A423A', width: 50 },
   doseInput: {
     flex: 1,
-    height: 46,
+    height: 48,
     borderWidth: 1.5,
-    borderColor: '#3B6D11',
-    borderRadius: 10,
+    borderColor: ACCENT,
+    borderRadius: 12,
     paddingHorizontal: 14,
     fontSize: 18,
     fontWeight: '700',
-    color: '#222',
-    backgroundColor: '#F9FFF5',
+    color: '#1A1D1A',
+    backgroundColor: '#F3F8F0',
   },
 
   buttons: {
     flexDirection: 'row',
+    backgroundColor: ACCENT,
     gap: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E0E0E0',
   },
-  btn:          { flex: 1, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  btnSave:      { backgroundColor: '#fff', borderWidth: 2, borderColor: '#3B6D11' },
-  btnCancel:    { backgroundColor: '#F0F0F0' },
-  btnSaveText:  { fontSize: 14, fontWeight: '700', color: '#3B6D11' },
-  btnCancelText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  btn: { flex: 1, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  btnPrimary: { backgroundColor: '#fff' },
+  btnPrimaryText: { fontSize: 14, fontWeight: '700', color: ACCENT },
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)' },
+  btnGhostText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 });

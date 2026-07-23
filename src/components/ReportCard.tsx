@@ -178,6 +178,8 @@ const ReportCard = forwardRef<View, ReportProps>(({
   );
 });
 
+ReportCard.displayName = 'ReportCard';
+
 export default ReportCard;
 
 const styles = StyleSheet.create({

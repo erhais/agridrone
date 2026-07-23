@@ -118,7 +118,7 @@ export default function LoginModal({ onSuccess }: Props) {
       const cleanLogin = login.trim();
       const cleanPassword = password.trim();
       const data = await fetchToken(cleanLogin, cleanPassword, repo.cle);
-      await saveSession(data.access_token, data.expires_in, cleanLogin, cleanPassword, repo.cle, rememberMe);
+      await saveSession(data.access_token, data.expires_in, cleanLogin, cleanPassword, repo.cle, rememberMe, data.nom, data.prenom);
       onSuccess();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la connexion.');
@@ -220,7 +220,7 @@ export default function LoginModal({ onSuccess }: Props) {
               <Ionicons name="warning-outline" size={40} color="#E65100" style={{ marginBottom: 16 }} />
               <Text style={styles.noRepoTitle}>Aucun projet Agridrone</Text>
               <Text style={styles.noRepoText}>
-                Aucun projet Agridrone n'est rattaché à votre compte.
+                Aucun projet Agridrone n’est rattaché à votre compte.
               </Text>
               <Text style={styles.noRepoCountdown}>
                 Déconnexion dans {noRepoCountdown}s…

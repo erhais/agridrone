@@ -2,7 +2,7 @@
   "expo": {
     "name": "AgriDrone",
     "slug": "agridrone",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "appagridrone",
@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "fr.agridrone.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "AgriDrone utilise votre position pour afficher la dose à appliquer sur la zone en cours.",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "fr.agridrone.app",
-      "versionCode": 5,
+      "versionCode": 7,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyBoEuDehwcu2LDxrAWlWjPeoTfSacY8bsM"
@@ -27,7 +27,7 @@
       },
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#2B5F6E"
+        "backgroundColor": "#0E4D61"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -51,7 +51,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#2B5F6E",
+          "backgroundColor": "#0E4D61",
           "image": "./assets/images/icon.png",
           "imageWidth": 180
         }
@@ -66,7 +66,8 @@
           "savePhotosPermission": "Autoriser AgriDrone à enregistrer des photos.",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

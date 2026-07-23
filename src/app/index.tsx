@@ -12,6 +12,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import * as Sharing from 'expo-sharing';
+import { WebView } from 'react-native-webview';
 import { captureRef } from 'react-native-view-shot';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -51,10 +52,11 @@ import {
   type ReferentielItem,
   type TypeSolItem,
 } from '../services/agridroneService';
-import { apiService, registerSessionExpiredHandler, unregisterSessionExpiredHandler } from '../services/api';
+import { apiService, ApiError, registerSessionExpiredHandler, unregisterSessionExpiredHandler } from '../services/api';
+import { config } from '../config/env';
 import FormulaireEngrais, { type FormulaireData } from '../components/FormulaireEngrais';
 import LoginModal, { clearSession } from '../components/LoginModal';
-import { loadToken, refreshToken, fetchRepositoriesStored, switchRepository, type AuthRepository } from '../services/authService';
+import { loadToken, refreshToken, fetchRepositoriesStored, getStoredCredentials, switchRepository, type AuthRepository } from '../services/authService';
 import SelectionCultureSemis, { type CultureSelection } from '../components/SelectionCultureSemis';
 import FormulaireSemisBetterave, { type SemisBetteraveData } from '../components/FormulaireSemisBetterave';
 import FormulaireZoneEngrais, { type ZoneEngraisData } from '../components/FormulaireZoneEngrais';
@@ -72,6 +74,7 @@ import {
   bearingDeg, bearingToCompass, distanceMeters,
   nearestOnBoundary, nudgeLatLng, pointInZoneGeometry, type LatLng,
 } from '../utils/geoUtils';
+import { verifierCoherenceZones } from '../utils/zoneUtils';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -90,6 +93,18 @@ const DEFAULT_REGION: Region = {
   latitudeDelta: 10,
   longitudeDelta: 10,
 };
+
+// Au-delà de ce latitudeDelta (carte trop dézoomée), on masque les étiquettes de dose
+// pour éviter l'encombrement. En dessous, elles s'affichent automatiquement.
+const DOSE_LABELS_MAX_DELTA = 0.06;
+
+// Palette des marqueurs de prélèvement : une couleur distincte par zone (num_zone).
+// Tous les points d'une même zone partagent la même couleur.
+const ZONE_MARKER_COLORS = [
+  '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA',
+  '#00897B', '#3949AB', '#C0CA33', '#D81B60', '#6D4C41',
+];
+const PRELEV_DEFAULT_COLOR = '#FF6B00'; // repli si num_zone absent (back pas encore à jour)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers style zones
@@ -145,6 +160,129 @@ function processRings(
   }
 }
 
+// Version de PDF.js chargée depuis un CDN dans la WebView du viewer d'analyses.
+const PDFJS_VERSION = '3.11.174';
+const PDFJS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
+
+/**
+ * Construit une page HTML autonome qui rend un PDF (fourni en base64) avec PDF.js,
+ * chaque page dessinée dans un canvas empilé verticalement (scroll + zoom natif WebView).
+ * Utilisée pour un rendu identique du rapport d'analyse sur iOS et Android.
+ */
+function buildPdfViewerHtml(base64: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4, user-scalable=yes" />
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#1A1A1A; overflow:hidden; }
+  /* Pagination horizontale : une page A4 par écran, glisser pour la suivante */
+  #pages {
+    display:flex; flex-direction:row; height:100vh;
+    overflow-x:auto; overflow-y:hidden;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+  }
+  .slide {
+    flex:0 0 100vw; width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    scroll-snap-align:center; box-sizing:border-box; padding:8px;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+  }
+  .slide canvas { width:100%; height:auto; box-shadow:0 1px 8px rgba(0,0,0,0.5); background:#fff; }
+  #counter {
+    position:fixed; bottom:14px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.6); color:#fff; font-family:-apple-system,Roboto,sans-serif;
+    font-size:13px; font-weight:600; padding:5px 12px; border-radius:14px; display:none;
+  }
+  #msg { color:#fff; font-family:-apple-system,Roboto,sans-serif; font-size:15px; text-align:center; padding:40px 20px; }
+</style>
+</head>
+<body>
+<div id="msg">Chargement du rapport…</div>
+<div id="pages"></div>
+<div id="counter"></div>
+<script src="${PDFJS_CDN}/pdf.min.js"></script>
+<script>
+  var A4_RATIO = 297 / 210; // hauteur/largeur d'une A4 portrait
+  var BASE64 = "${base64}";
+  (function () {
+    function fail() { document.getElementById('msg').textContent = "Impossible d'afficher le PDF."; }
+    if (!window.pdfjsLib) { fail(); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "${PDFJS_CDN}/pdf.worker.min.js";
+    try {
+      var bin = atob(BASE64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      pdfjsLib.getDocument({ data: bytes }).promise.then(function (pdf) {
+        var container = document.getElementById('pages');
+        var counter = document.getElementById('counter');
+        var dpr = window.devicePixelRatio || 1;
+        var frameW = window.innerWidth - 16; // largeur utile (padding .slide)
+        var slideCount = 0;
+
+        function refreshCounter() {
+          if (slideCount <= 1) return;
+          counter.style.display = 'block';
+          container.addEventListener('scroll', function () {
+            var idx = Math.round(container.scrollLeft / window.innerWidth) + 1;
+            if (idx < 1) idx = 1; if (idx > slideCount) idx = slideCount;
+            counter.textContent = idx + ' / ' + slideCount;
+          }, { passive:true });
+          counter.textContent = '1 / ' + slideCount;
+        }
+
+        // Rend une page source, la découpe en colonnes A4 portrait (une A3 paysage = 2 A4),
+        // chaque colonne ajustée à la largeur de l'écran = une page navigable.
+        function renderPage(pageNum) {
+          return pdf.getPage(pageNum).then(function (page) {
+            var base = page.getViewport({ scale: 1 });
+            // Nombre de colonnes A4 portrait tenant dans la page (A3 paysage → 2, A4 → 1)
+            var cols = Math.max(1, Math.round((base.width / base.height) * A4_RATIO));
+            var colWpt = base.width / cols;
+            // Échelle pour qu'UNE colonne remplisse la largeur de l'écran
+            var scale = (frameW / colWpt) * dpr;
+            var vp = page.getViewport({ scale: scale });
+            // Rendu complet de la page hors écran
+            var full = document.createElement('canvas');
+            full.width = vp.width;
+            full.height = vp.height;
+            return page.render({ canvasContext: full.getContext('2d'), viewport: vp }).promise.then(function () {
+              var colWpx = vp.width / cols;
+              for (var s = 0; s < cols; s++) {
+                var srcX = Math.round(s * colWpx);
+                var w = (s === cols - 1) ? (vp.width - srcX) : Math.round(colWpx);
+                var slide = document.createElement('div');
+                slide.className = 'slide';
+                var c = document.createElement('canvas');
+                c.width = w;
+                c.height = vp.height;
+                c.getContext('2d').drawImage(full, srcX, 0, w, vp.height, 0, 0, w, vp.height);
+                slide.appendChild(c);
+                container.appendChild(slide);
+                slideCount++;
+              }
+            });
+          });
+        }
+
+        var chain = Promise.resolve();
+        for (var n = 1; n <= pdf.numPages; n++) {
+          (function (p) { chain = chain.then(function () { return renderPage(p); }); })(n);
+        }
+        return chain.then(function () {
+          document.getElementById('msg').style.display = 'none';
+          refreshCounter();
+        });
+      }).catch(fail);
+    } catch (e) { fail(); }
+  })();
+</script>
+</body>
+</html>`;
+}
+
 function computeRegion(features: ParcelleFeature[], padding = 1.2): Region | null {
   const bbox = { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity };
 
@@ -185,13 +323,11 @@ interface IconDef {
 }
 
 const RIGHT_ICONS: IconDef[] = [
-  { id: 'switch',     lib: 'ion', name: 'swap-horizontal-outline', tooltip: 'Changer de projet',      label: 'Projet'   },
-  { id: 'logout',     lib: 'ion', name: 'log-out-outline',         tooltip: 'Déconnexion',             label: 'Quitter',  color: '#c0392b' },
-  { id: 'screenshot', lib: 'ion', name: 'camera-outline',          tooltip: 'Capturer la parcelle',    label: 'Capture'  },
-  { id: 'pin',        lib: 'ion', name: 'location-outline',        tooltip: 'Prélèvements',            label: 'Prélèv.'  },
-  { id: 'doses',      lib: 'ion', name: 'pricetag-outline',        tooltip: 'Étiquettes doses',        label: 'Doses'    },
-  { id: 'attributs',  lib: 'ion', name: 'create-outline',          tooltip: 'Éditer les zones',        label: 'Éditer'   },
-  { id: 'formulaire', lib: 'ion', name: 'document-text-outline',   tooltip: 'Formulaire parcelle',     label: 'Fiche'    },
+  { id: 'account',    lib: 'ion', name: 'person-circle-outline',   tooltip: 'Compte',                  label: 'Compte'   },
+  { id: 'screenshot', lib: 'ion', name: 'camera-outline',          tooltip: 'Rapport parcelle',        label: 'Rapport'  },
+  { id: 'pin',        lib: 'ion', name: 'location-outline',        tooltip: "Points d'analyse",        label: 'Analyse'  },
+  { id: 'attributs',  lib: 'ion', name: 'create-outline',          tooltip: 'Éditer les zones',        label: 'Zone'     },
+  { id: 'formulaire', lib: 'ion', name: 'document-text-outline',   tooltip: 'Formulaire parcelle',     label: 'Parcelle' },
   { id: 'tractor',    lib: 'mci', name: 'tractor',                 tooltip: 'Mode conduite / Shapefile', label: 'Moduler' },
 ];
 
@@ -310,18 +446,18 @@ function RightIconBar({
   onPressIcon,
   hasZones = false,
   pinActive = false,
-  dosesActive = false,
   editActive = false,
   conduiteActive = false,
+  onIconTouch,
   visibleIds,
 }: {
   topOffset: number;
   onPressIcon?: (id: string) => void;
   hasZones?: boolean;
   pinActive?: boolean;
-  dosesActive?: boolean;
   editActive?: boolean;
   conduiteActive?: boolean;
+  onIconTouch?: () => void;
   visibleIds?: string[];
 }) {
   const [tooltipId, setTooltipId] = useState<string | null>(null);
@@ -340,7 +476,6 @@ function RightIconBar({
       {icons.map((item, index) => {
         const active = (item.id === 'info' && hasZones)
           || (item.id === 'pin' && pinActive)
-          || (item.id === 'doses' && dosesActive)
           || (item.id === 'attributs' && editActive)
           || (item.id === 'tractor' && conduiteActive);
         return (
@@ -351,6 +486,7 @@ function RightIconBar({
               </View>
             )}
             <Pressable
+              onPressIn={() => onIconTouch?.()}
               onPress={() => onPressIcon?.(item.id)}
               onLongPress={() => showTooltip(item.id)}
               delayLongPress={400}
@@ -665,15 +801,15 @@ function MiniLegend({
 // 5. Panneau rétractable bas
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface AccordionState {
-  engrais: boolean;
-  semis: boolean;
-}
-
 const ENGRAIS_PILLS: { label: string; code: string }[] = [
   { label: 'phosphore', code: 'P' },
   { label: 'potassium', code: 'K' },
   { label: 'magnésie', code: 'MG' },
+];
+
+const SEMIS_PILLS: { label: string; code: string }[] = [
+  { label: 'semis conseillé', code: 'S' },
+  { label: 'zonage libre', code: 'Z' },
 ];
 
 interface BottomPanelProps {
@@ -741,14 +877,6 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
     ]).start();
   };
 
-  const [acc, setAcc] = useState<AccordionState>({
-    engrais: true,
-    semis: false,
-  });
-
-  const toggleAcc = (key: keyof AccordionState) =>
-    setAcc(prev => ({ ...prev, [key]: !prev[key] }));
-
   const handlePill = (code: string) =>
     onSelectElement(selectedElement === code ? null : code);
 
@@ -772,71 +900,21 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
           onContentSizeChange={handleContentSize}
           contentContainerStyle={[styles.panelScrollContent, { paddingBottom: safeBottom }]}>
 
-          <AccordionSection
+          <PanelSection
             title="ENGRAIS"
-            isOpen={acc.engrais}
-            onToggle={() => {
-              const opening = !acc.engrais;
-              toggleAcc('engrais');
-              // Sélectionne phosphore par défaut si aucun engrais actif
-              if (opening && !['P', 'K', 'MG'].includes(selectedElement ?? '')) {
-                onSelectElement('P');
-              }
-            }}>
-            <View style={styles.pillsRow}>
-              {ENGRAIS_PILLS.map(({ label, code }) => {
-                const active = selectedElement === code;
-                return (
-                  <Pressable
-                    key={code}
-                    onPress={() => handlePill(code)}
-                    style={({ pressed }) => [
-                      styles.pill,
-                      active && styles.pillActive,
-                      pressed && { opacity: 0.7 },
-                    ]}>
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </AccordionSection>
+            pills={ENGRAIS_PILLS}
+            selectedElement={selectedElement}
+            onPill={handlePill}
+          />
 
-          <View style={styles.panelDivider} />
+          <View style={styles.sectionDivider} />
 
-          <AccordionSection
+          <PanelSection
             title="SEMIS"
-            isOpen={acc.semis}
-            onToggle={() => {
-              const opening = !acc.semis;
-              toggleAcc('semis');
-              if (!opening && (selectedElement === 'S' || selectedElement === 'Z')) onSelectElement(null);
-            }}>
-            <View style={styles.pillsRow}>
-              {[
-                { code: 'S',  label: 'semis conseillé' },
-                { code: 'Z', label: 'zonage libre' },
-              ].map(({ code, label }) => {
-                const active = selectedElement === code;
-                return (
-                  <Pressable
-                    key={code}
-                    onPress={() => handlePill(code)}
-                    style={({ pressed }) => [
-                      styles.pill,
-                      active && styles.pillActive,
-                      pressed && { opacity: 0.7 },
-                    ]}>
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </AccordionSection>
+            pills={SEMIS_PILLS}
+            selectedElement={selectedElement}
+            onPill={handlePill}
+          />
 
         </ScrollView>
       </Animated.View>
@@ -844,33 +922,39 @@ function BottomPanel({ bottomInset, selectedElement, onSelectElement, collapseSi
   );
 }
 
-function AccordionSection({
+function PanelSection({
   title,
-  isOpen,
-  onToggle,
-  children,
+  pills,
+  selectedElement,
+  onPill,
 }: {
   title: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  pills: { label: string; code: string }[];
+  selectedElement: string | null;
+  onPill: (code: string) => void;
 }) {
   return (
-    <View>
-      <Pressable
-        style={({ pressed }) => [
-          styles.accHeader,
-          pressed && { opacity: 0.7 },
-        ]}
-        onPress={onToggle}>
-        <Text style={styles.accTitle}>{title}</Text>
-        <Ionicons
-          name={isOpen ? 'chevron-up-outline' : 'chevron-down-outline'}
-          size={16}
-          color="#D32F2F"
-        />
-      </Pressable>
-      {isOpen && <View style={styles.accBody}>{children}</View>}
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>{title}</Text>
+      <View style={styles.pillsRow}>
+        {pills.map(({ label, code }) => {
+          const active = selectedElement === code;
+          return (
+            <Pressable
+              key={code}
+              onPress={() => onPill(code)}
+              style={({ pressed }) => [
+                styles.pill,
+                active && styles.pillActive,
+                pressed && { opacity: 0.7 },
+              ]}>
+              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -882,8 +966,18 @@ function AccordionSection({
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  // Horodatage du dernier appui sur une icône : évite qu'un tap sur une icône
+  // sélectionne aussi la parcelle située dessous (le tap du polygone se déclenche au niveau natif).
+  const iconTouchAtRef = useRef(0);
   const [reportVisible, setReportVisible] = useState(false);
   const [switchProjectVisible, setSwitchProjectVisible] = useState(false);
+  const [accountMenuVisible, setAccountMenuVisible] = useState(false);
+  const [accountInfo, setAccountInfo] = useState<{
+    login: string;
+    repository: string;
+    nom: string | null;
+    prenom: string | null;
+  } | null>(null);
   const [switchRepos, setSwitchRepos] = useState<AuthRepository[]>([]);
   const [switchLoading, setSwitchLoading] = useState(false);
   const [switchSearch, setSwitchSearch] = useState('');
@@ -900,6 +994,9 @@ export default function HomeScreen() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [zones, setZones] = useState<ZoneDetail[]>([]);
+  // Renseigné quand l'API renvoie les zones d'une autre parcelle : les doses
+  // sont alors masquées plutôt qu'affichées à tort (risque d'épandage erroné).
+  const [zonesIncoherentes, setZonesIncoherentes] = useState<string | null>(null);
   const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
   const [parcelleDbId, setParcelleDbId] = useState<number | null>(null);
   const [isEditeur, setIsEditeur] = useState(false);
@@ -915,7 +1012,6 @@ export default function HomeScreen() {
   const [prelevements, setPrelevements] = useState<Prelevement[]>([]);
   const [showPrelevements, setShowPrelevements] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
-  const [showDoseLabels, setShowDoseLabels] = useState(false);
   const [labelPositions, setLabelPositions] = useState<
     Array<{ key: string; x: number; y: number; doseStr: string; perso: boolean }>
   >([]);
@@ -925,6 +1021,16 @@ export default function HomeScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
 
+  // Charge l'identité (identifiant + dépôt courant) et la liste des dépôts pour le menu Compte
+  const hydrateAccountContext = useCallback(() => {
+    fetchRepositoriesStored().then(repos => {
+      if (repos && repos.length > 0) setSwitchRepos(repos);
+    }).catch(() => {});
+    getStoredCredentials().then(info => {
+      if (info) setAccountInfo(info);
+    }).catch(() => {});
+  }, []);
+
   // Vérifier le token JWT au démarrage — refresh silencieux si expiré
   useEffect(() => {
     (async () => {
@@ -933,9 +1039,7 @@ export default function HomeScreen() {
         if (!token) token = await refreshToken();
         if (token) {
           setIsAuthenticated(true);
-          fetchRepositoriesStored().then(repos => {
-            if (repos && repos.length > 0) setSwitchRepos(repos);
-          }).catch(() => {});
+          hydrateAccountContext();
         }
       } catch {
         // pas de session valide → LoginModal
@@ -943,7 +1047,7 @@ export default function HomeScreen() {
         setSessionChecked(true);
       }
     })();
-  }, []);
+  }, [hydrateAccountContext]);
 
   // Retour à la connexion si le BO rejette le token et que le refresh échoue
   useEffect(() => {
@@ -975,6 +1079,15 @@ export default function HomeScreen() {
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState<number | null>(null);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const geoMsgOpacity = useRef(new Animated.Value(0)).current;
+  const warnOpacity = useRef(new Animated.Value(0)).current;
+  const [warnVisible, setWarnVisible] = useState(false);
+  const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successOpacity = useRef(new Animated.Value(0)).current;
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorOpacity = useRef(new Animated.Value(0)).current;
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [formulaireVisible, setFormulaireVisible] = useState(false);
   const [loadingShapefile, setLoadingShapefile] = useState(false);
   const iconBarOpacity = useRef(new Animated.Value(0)).current;
@@ -1029,6 +1142,11 @@ export default function HomeScreen() {
     }
   }, [editZoneMode]);
 
+  useEffect(() => () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (!isGeolocating) {
       geoMsgOpacity.setValue(0);
@@ -1057,6 +1175,7 @@ export default function HomeScreen() {
     if (selectedId === null || selectedElement === null || features.length === 0) {
       setZones([]);
       setParcelleStats(null);
+      setZonesIncoherentes(null);
       return;
     }
     const feature = features[selectedId];
@@ -1067,11 +1186,13 @@ export default function HomeScreen() {
     if (idParcel == null) {
       setZones([]);
       setParcelleStats(null);
+      setZonesIncoherentes(null);
       return;
     }
     let cancelled = false;
     setZones([]);
     setParcelleStats(null);
+    setZonesIncoherentes(null);
     setLoadingZones(true);
     // Pour semis : récupérer aussi le nom de la culture
     if (selectedElement === 'S') {
@@ -1089,20 +1210,34 @@ export default function HomeScreen() {
 
     getParcelleDetails(idParcel, selectedElement)
       .then(data => {
-        if (!cancelled) {
-          setZones(data.zones);
-          setParcelleStats(data.stats);
-          setParcelleDbId(data.parcelle.id);
-          setPrelevements(data['prélevements'] ?? []);
-          const editeur = data.is_editeur ?? data.parcelle.is_editeur ?? false;
-          const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
-          setIsEditeur(editeur);
-          setCarteValue(carte);
-          if (editeur) {
-            getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
-          } else {
-            setTypeSols([]);
-          }
+        if (cancelled) return;
+        // Garde-fou : les zones doivent être contenues dans la parcelle
+        // sélectionnée. Ne jamais afficher les doses d'une autre parcelle.
+        const coherence = verifierCoherenceZones(data.zones, feature.geometry);
+        if (!coherence.coherent) {
+          setZones([]);
+          setParcelleStats(null);
+          setPrelevements([]);
+          setZonesIncoherentes(
+            `Données incohérentes pour « ${feature.properties?.nom_parcel ?? 'cette parcelle'} » : ` +
+            `${coherence.nbHorsParcelle} zone${coherence.nbHorsParcelle > 1 ? 's' : ''} ` +
+            `sur ${data.zones.length} ${coherence.nbHorsParcelle > 1 ? 'sont situées' : 'est située'} ` +
+            `hors de la parcelle. Les doses ne sont pas affichées. Contactez le support.`,
+          );
+          return;
+        }
+        setZones(data.zones);
+        setParcelleStats(data.stats);
+        setParcelleDbId(data.parcelle.id);
+        setPrelevements(data['prélevements'] ?? []);
+        const editeur = data.is_editeur ?? data.parcelle.is_editeur ?? false;
+        const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
+        setIsEditeur(editeur);
+        setCarteValue(carte);
+        if (editeur) {
+          getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
+        } else {
+          setTypeSols([]);
         }
       })
       .catch((err: unknown) => {
@@ -1113,6 +1248,9 @@ export default function HomeScreen() {
   }, [selectedId, selectedElement, features, reloadTrigger]);
 
   const handleSelect = (index: number, nom: string) => {
+    // Ignorer un tap de polygone survenant juste après un appui sur une icône
+    // (icône superposée à une parcelle → évite le changement de parcelle inopiné).
+    if (Date.now() - iconTouchAtRef.current < 500) return;
     Keyboard.dismiss();
     setSelectedId(index);
     setQuery(nom);
@@ -1120,11 +1258,16 @@ export default function HomeScreen() {
     setSelectedElement(prev => prev ?? 'P');
     setCollapseSignal(s => s + 1);
     setZones([]);
+    setZonesIncoherentes(null);
     setPrelevements([]);
     setShowPrelevements(false);
-    setShowDoseLabels(false);
     setEditZoneMode(false);
     setSelectedZoneIdx(null);
+    // Réinitialiser les données de Fiche : sinon elles restent « collées » à la
+    // parcelle précédente (ex. obj_rendement = -1) et invalident formValuesValid,
+    // ce qui masque à tort l'icône « Moduler ».
+    setLastFormulaireData(null);
+    setFormulaireId(null);
     setReloadTrigger(t => t + 1);
     const region = computeRegion([features[index]], 1.6);
     if (region) {
@@ -1138,11 +1281,11 @@ export default function HomeScreen() {
     setQuery('');
     setDropdownOpen(false);
     setZones([]);
+    setZonesIncoherentes(null);
     setParcelleStats(null);
     setParcelleDbId(null);
     setPrelevements([]);
     setShowPrelevements(false);
-    setShowDoseLabels(false);
     setEditZoneMode(false);
     setSelectedZoneIdx(null);
     setLastFormulaireData(null);
@@ -1152,12 +1295,17 @@ export default function HomeScreen() {
     }
   };
 
+  // Affichage automatique des étiquettes de dose : dès qu'une parcelle a des zones,
+  // que la carte est assez zoomée, et hors mode conduite (modulation manuelle dose/vitesse).
+  const doseLabelsVisible =
+    zones.length > 0 && !conduiteMode && mapLatDelta <= DOSE_LABELS_MAX_DELTA;
+
   const updateLabelPositions = useCallback(async () => {
     if (!mapRef.current || zones.length === 0) {
       setLabelPositions([]);
       return;
     }
-    if (!showDoseLabels) return; // garder les positions en cache, ne pas recalculer
+    if (!doseLabelsVisible) return; // garder les positions en cache, ne pas recalculer
     const { height: screenH } = Dimensions.get('window');
     const threshold = mapLatDelta * (60 / screenH);
     const placed: { lat: number; lng: number }[] = [];
@@ -1194,9 +1342,9 @@ export default function HomeScreen() {
       ),
     );
     setLabelPositions(results.filter(Boolean) as typeof labelPositions);
-  }, [showDoseLabels, zones, mapLatDelta]);
+  }, [doseLabelsVisible, zones, mapLatDelta]);
 
-  useEffect(() => { void updateLabelPositions(); }, [showDoseLabels, zones, mapLatDelta]);
+  useEffect(() => { void updateLabelPositions(); }, [doseLabelsVisible, zones, mapLatDelta]);
 
   // ── Bulle dose : zone courante + prochaine zone < 10 m ────────────────────
   // Mode simulation réservé aux éditeurs avec plusieurs projets
@@ -1338,39 +1486,83 @@ export default function HomeScreen() {
         setParcelleStats(data.stats);
         setPrelevements(data['prélevements'] ?? []);
         setLegendExpanded(true);
-        // Activer les étiquettes si des zones ont des doses
-        const hasDoses = data.zones.some(
-          z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
-        );
-        if (hasDoses) setShowDoseLabels(true);
         if (result.doses_recalculees) {
           Alert.alert(
             'Semis enregistré ✅',
             `${result.zones_mises_a_jour} zone(s) mise(s) à jour\n${result.zones_dosage_manuel} zone(s) en dosage manuel`,
           );
         } else {
-          Alert.alert('Succès', 'Semis enregistré ✅');
+          showSuccess('Semis enregistré');
         }
       })
-      .catch(() => Alert.alert('Succès', 'Semis enregistré ✅'))
+      .catch(() => showSuccess('Semis enregistré'))
       .finally(() => setLoadingZones(false));
+  };
+
+  const showNoParcelleWarning = () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    setWarnVisible(true);
+    Animated.timing(warnOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    warnTimerRef.current = setTimeout(() => {
+      Animated.timing(warnOpacity, { toValue: 0, duration: 250, useNativeDriver: true })
+        .start(() => setWarnVisible(false));
+    }, 3500);
+  };
+
+  const handleWarnPress = () => {
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    Animated.timing(warnOpacity, { toValue: 0, duration: 200, useNativeDriver: true })
+      .start(() => setWarnVisible(false));
+    setDropdownOpen(true);
+    searchInputRef.current?.focus();
+  };
+
+  const showSuccess = (msg: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSuccessMsg(msg);
+    Animated.timing(successOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    successTimerRef.current = setTimeout(() => {
+      Animated.timing(successOpacity, { toValue: 0, duration: 250, useNativeDriver: true })
+        .start(() => setSuccessMsg(null));
+    }, 2500);
+  };
+
+  // Bandeau d'erreur (rouge) — affiché un peu plus longtemps que le succès.
+  const showError = (msg: string) => {
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    setErrorMsg(msg);
+    Animated.timing(errorOpacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    errorTimerRef.current = setTimeout(() => {
+      Animated.timing(errorOpacity, { toValue: 0, duration: 250, useNativeDriver: true })
+        .start(() => setErrorMsg(null));
+    }, 4000);
+  };
+
+  // Traduit une erreur technique en message clair et rassurant pour l'agriculteur.
+  const friendlyError = (e: unknown, fallback: string): string => {
+    if (e instanceof ApiError) {
+      if (e.status === 401 || e.status === 403) {
+        return 'Votre session a expiré. Reconnectez-vous puis réessayez.';
+      }
+      if (e.status === 400 || e.status === 422) {
+        return 'Certaines informations saisies sont incorrectes. Vérifiez le formulaire et réessayez.';
+      }
+      if (e.status >= 500) {
+        return "Le service a rencontré un problème. Réessayez dans un instant ; si ça persiste, prévenez le support.";
+      }
+    }
+    // Erreur réseau (fetch échoué, hors ligne…)
+    if (e instanceof TypeError) {
+      return 'Connexion impossible. Vérifiez votre connexion internet, puis réessayez.';
+    }
+    return fallback;
   };
 
   const handleSelectElement = (code: string | null) => {
     setSelectedElement(code);
     if (code !== null) setCollapseSignal(s => s + 1);
     if (code !== null && selectedId === null) {
-      Alert.alert(
-        'Aucune parcelle sélectionnée',
-        'Sélectionnez d\'abord une parcelle pour afficher cette carte.',
-        [{
-          text: 'Choisir une parcelle',
-          onPress: () => {
-            setDropdownOpen(true);
-            searchInputRef.current?.focus();
-          },
-        }],
-      );
+      showNoParcelleWarning();
     } else if (code !== null && selectedId !== null) {
       const region = computeRegion([features[selectedId]], 1.6);
       if (region) mapRef.current?.animateToRegion(region, 600);
@@ -1562,6 +1754,23 @@ export default function HomeScreen() {
     void handleStartConduite();
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Déconnexion',
+      'Voulez-vous vous déconnecter ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Se déconnecter',
+          style: 'destructive',
+          onPress: () => {
+            void clearSession().then(() => setIsAuthenticated(false));
+          },
+        },
+      ],
+    );
+  };
+
   const handleSwitchProject = async () => {
     setSwitchLoading(true);
     const repos = await fetchRepositoriesStored();
@@ -1584,9 +1793,12 @@ export default function HomeScreen() {
     setSwitchLoading(true);
     const token = await switchRepository(repo.cle).finally(() => setSwitchLoading(false));
     if (!token) { Alert.alert('Erreur', 'Impossible de changer de projet.'); return; }
+    // Rafraîchir l'identité (dépôt courant, nom/prénom) affichée dans le menu Compte
+    hydrateAccountContext();
     // Réinitialiser la carte et recharger les parcelles du nouveau projet
     setFeatures([]);
     setZones([]);
+    setZonesIncoherentes(null);
     setSelectedId(null);
     setSelectedElement(null);
     setParcelleStats(null);
@@ -1672,27 +1884,77 @@ export default function HomeScreen() {
     }
   };
 
-  const handleIconPress = (id: string) => {
-    if (id === 'switch') void handleSwitchProject();
-    if (id === 'logout') {
-      Alert.alert(
-        'Déconnexion',
-        'Voulez-vous vous déconnecter ?',
-        [
-          { text: 'Annuler', style: 'cancel' },
-          {
-            text: 'Se déconnecter',
-            style: 'destructive',
-            onPress: () => {
-              void clearSession().then(() => setIsAuthenticated(false));
-            },
-          },
-        ],
-      );
-      return;
+  const [downloadingEch, setDownloadingEch] = useState<string | null>(null);
+  // HTML (viewer PDF.js) à afficher plein écran dans la WebView, iOS ET Android
+  const [pdfViewerHtml, setPdfViewerHtml] = useState<string | null>(null);
+
+  const handleDownloadAnalyse = async (ech: string) => {
+    setDownloadingEch(ech);
+    try {
+      const token = await loadToken();
+      const url = `${config.baseURL}/api/v1/parcelles/analyses/${encodeURIComponent(ech)}/pdf`;
+
+      // Web : l'endpoint exige un Bearer, donc pas de window.open direct.
+      // On récupère le PDF en blob puis on l'ouvre dans un nouvel onglet → viewer PDF natif du navigateur.
+      if (Platform.OS === 'web') {
+        const resp = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        window.open(objectUrl, '_blank');
+        // Libérer l'URL objet une fois l'onglet chargé.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        return;
+      }
+
+      // Natif (iOS + Android) : télécharger le PDF (Bearer requis), le lire en base64,
+      // puis l'afficher dans une WebView via PDF.js → rendu identique sur les deux plateformes.
+      const target = `${FileSystem.cacheDirectory}analyse_${ech}.pdf`;
+      const res = await FileSystem.downloadAsync(url, target, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      const base64 = await FileSystem.readAsStringAsync(res.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setPdfViewerHtml(buildPdfViewerHtml(base64));
+    } catch (e) {
+      showError(friendlyError(e, "Impossible d'ouvrir le rapport d'analyse. Réessayez dans un instant."));
+    } finally {
+      setDownloadingEch(null);
     }
-    if (id === 'pin') setShowPrelevements(v => !v);
-    if (id === 'doses') setShowDoseLabels(v => !v);
+  };
+
+  // Fermeture du viewer PDF : au retour, recentrer sur la parcelle sélectionnée.
+  const closePdfViewer = () => {
+    setPdfViewerHtml(null);
+    if (selectedId !== null) {
+      const region = computeRegion([features[selectedId]], 1.6);
+      if (region) mapRef.current?.animateToRegion(region, 600);
+    }
+  };
+
+  const handleIconPress = (id: string) => {
+    if (id === 'account') { setAccountMenuVisible(true); return; }
+    // Recentrer la carte sur la parcelle sélectionnée pour les actions liées à la parcelle
+    // (Doses, Éditer, Fiche, Moduler, Rapport). Analyse (« pin ») garde sa logique propre.
+    if (selectedId !== null && ['attributs', 'formulaire', 'tractor', 'screenshot'].includes(id)) {
+      const region = computeRegion([features[selectedId]], 1.6);
+      if (region) mapRef.current?.animateToRegion(region, 600);
+    }
+    // Activer une autre fonction sort du mode Analyse (points + bandeau) → MiniLegend réapparaît
+    if (id !== 'pin') setShowPrelevements(false);
+    if (id === 'pin') {
+      const activating = !showPrelevements;
+      setShowPrelevements(activating);
+      // À l'activation du mode Analyse, recentrer la carte sur la parcelle sélectionnée
+      if (activating && selectedId !== null) {
+        const region = computeRegion([features[selectedId]], 1.6);
+        if (region) mapRef.current?.animateToRegion(region, 600);
+      }
+    }
     if (id === 'attributs') {
       setEditZoneMode(v => {
         if (v) setSelectedZoneIdx(null); // reset sélection à la désactivation
@@ -1758,6 +2020,34 @@ export default function HomeScreen() {
     }
   };
 
+  // Couleur de marqueur par zone de prélèvement : chaque num_zone distinct reçoit
+  // une couleur de la palette, partagée par tous les points de la zone.
+  const prelevementZoneColors = useMemo(() => {
+    const zones = Array.from(
+      new Set(prelevements.map(p => p.num_zone).filter((z): z is number => z != null)),
+    ).sort((a, b) => a - b);
+    const map = new Map<number, string>();
+    zones.forEach((z, i) => map.set(z, ZONE_MARKER_COLORS[i % ZONE_MARKER_COLORS.length]));
+    return map;
+  }, [prelevements]);
+
+  // Une entrée par zone/échantillon pour le bandeau : couleur + n° échantillon (PDF)
+  const prelevementZones = useMemo(() => {
+    const echByZone = new Map<number, string | null>();
+    for (const p of prelevements) {
+      if (p.num_zone != null && !echByZone.has(p.num_zone)) {
+        echByZone.set(p.num_zone, p.ech ?? null);
+      }
+    }
+    return Array.from(echByZone.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([numZone, ech]) => ({
+        numZone,
+        ech,
+        color: prelevementZoneColors.get(numZone) ?? PRELEV_DEFAULT_COLOR,
+      }));
+  }, [prelevements, prelevementZoneColors]);
+
   if (Platform.OS === 'web') {
     return (
       <View style={styles.webFallback}>
@@ -1771,6 +2061,16 @@ export default function HomeScreen() {
   const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile || loadingFormulaire;
   const searchTop = insets.top + 10;
   const iconBarTop = searchTop + 54;
+
+  // Libellé lisible du dépôt courant pour l'en-tête du menu Compte
+  const currentRepoLabel = accountInfo
+    ? (switchRepos.find(r => r.cle === accountInfo.repository)?.label ?? null)
+    : null;
+
+  // Nom affiché dans le menu Compte : « Prénom Nom » si dispo, sinon l'identifiant
+  const accountDisplayName = accountInfo
+    ? ([accountInfo.prenom, accountInfo.nom].filter(Boolean).join(' ').trim() || accountInfo.login)
+    : '';
 
   return (
     <View style={styles.container}>
@@ -1789,10 +2089,12 @@ export default function HomeScreen() {
           const nom = feature.properties?.nom_parcel ?? 'Sans nom';
           const selected = fi === selectedId;
           const polygonProps = {
-            fillColor: 'transparent',
-            strokeColor: selected ? '#FFD700' : '#888888',
-            strokeWidth: selected ? 3 : 1.5,
-            tappable: selectedId === null,
+            fillColor: selected ? 'transparent' : 'rgba(255,255,255,0.06)',
+            strokeColor: selected ? '#FFD700' : '#FFFFFF',
+            strokeWidth: selected ? 3 : 2,
+            // Toute parcelle non sélectionnée reste cliquable → on peut basculer
+            // de l'une à l'autre d'un simple clic, même quand une parcelle est déjà sélectionnée.
+            tappable: !selected,
             onPress: () => handleSelect(fi, nom),
           };
           if (feature.geometry?.type === 'Polygon') {
@@ -1927,20 +2229,26 @@ export default function HomeScreen() {
           return [];
         })}
 
-        {showPrelevements && prelevements.map((p, pi) => (
-          <Marker
-            key={`prel-${pi}`}
-            coordinate={{ latitude: p.lat, longitude: p.lng }}
-            anchor={{ x: 0.5, y: 0 }}
-            tracksViewChanges={true}>
-            <View style={styles.markerWrapper}>
-              <View style={styles.markerDot} />
-              <View style={styles.markerLabelBg}>
-                <Text style={styles.markerLabelText}>{p.nom}</Text>
+        {showPrelevements && prelevements.map((p, pi) => {
+          const zoneColor = p.num_zone != null
+            ? (prelevementZoneColors.get(p.num_zone) ?? PRELEV_DEFAULT_COLOR)
+            : PRELEV_DEFAULT_COLOR;
+          const label = (p.nom ?? '').replace(/^Z/i, ''); // « Z1-1 » → « 1-1 »
+          return (
+            <Marker
+              key={`prel-${pi}`}
+              coordinate={{ latitude: p.lat, longitude: p.lng }}
+              anchor={{ x: 0.5, y: 0 }}
+              tracksViewChanges={true}>
+              <View style={styles.markerWrapper}>
+                <View style={[styles.markerDot, { backgroundColor: zoneColor }]} />
+                <View style={[styles.markerLabelBg, { backgroundColor: zoneColor }]}>
+                  <Text style={styles.markerLabelText}>{label}</Text>
+                </View>
               </View>
-            </View>
-          </Marker>
-        ))}
+            </Marker>
+          );
+        })}
 
         {/* ── Position utilisateur ─────────────────────────────────────── */}
         {userLocation && (
@@ -1980,7 +2288,7 @@ export default function HomeScreen() {
       </MapView>
 
       {/* ── Étiquettes doses — overlay React Native (hors MapView) ─────── */}
-      {showDoseLabels && labelPositions.map(pos => (
+      {doseLabelsVisible && labelPositions.map(pos => (
         <View
           key={pos.key}
           style={[styles.doseLabelOverlay, { left: pos.x, top: pos.y }]}
@@ -2029,16 +2337,15 @@ export default function HomeScreen() {
           onPressIcon={handleIconPress}
           hasZones={zones.length > 0}
           pinActive={showPrelevements}
-          dosesActive={showDoseLabels}
           editActive={editZoneMode}
           conduiteActive={conduiteMode}
+          onIconTouch={() => { iconTouchAtRef.current = Date.now(); }}
           visibleIds={[
-            'switch',
-            'logout',
+            'account',
             ...(zones.length > 0 && ['P','K','MG','S'].includes(selectedElement ?? '') ? ['screenshot'] : []),
             ...(prelevements.length > 0 ? ['pin'] : []),
             ...(allDosesSet ? ['tractor'] : []),
-            ...(zones.length > 0 ? ['doses', 'attributs'] : []),
+            ...(zones.length > 0 ? ['attributs'] : []),
             ...(zones.length > 0 && selectedElement !== 'Z' ? ['formulaire'] : []),
           ]}
         />
@@ -2051,6 +2358,69 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* ── Bandeau analyses : légende couleurs par zone + téléchargement PDF ── */}
+      {showPrelevements && prelevements.length > 0 && (
+        <View style={styles.analyseBanner}>
+          <Text style={styles.analyseBannerTitle}>Analyses de sol</Text>
+          {prelevementZones.map(z => (
+            <View key={z.numZone} style={styles.analyseLegendRow}>
+              <View style={[styles.analyseSwatch, { backgroundColor: z.color }]} />
+              <Text style={styles.analyseLegendText} numberOfLines={1}>
+                Zone {z.numZone % 1000}
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.analyseDownloadBtn,
+                  pressed && { opacity: 0.6 },
+                  !z.ech && { opacity: 0.3 },
+                ]}
+                onPress={() => z.ech && handleDownloadAnalyse(z.ech)}
+                disabled={!z.ech || downloadingEch === z.ech}
+                hitSlop={6}>
+                {downloadingEch === z.ech ? (
+                  <ActivityIndicator size="small" color="#2E7D32" />
+                ) : (
+                  <Ionicons name="attach" size={16} color="#2E7D32" />
+                )}
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* ── Viewer PDF plein écran (iOS + Android) : rapport d'analyse via PDF.js ── */}
+      <Modal
+        visible={pdfViewerHtml !== null}
+        animationType="slide"
+        onRequestClose={closePdfViewer}>
+        <View style={styles.pdfViewerContainer}>
+          <View style={[styles.pdfViewerHeader, { paddingTop: insets.top + 8 }]}>
+            <Pressable
+              onPress={closePdfViewer}
+              hitSlop={12}
+              style={({ pressed }) => [styles.pdfViewerBack, pressed && { opacity: 0.6 }]}>
+              <Ionicons name="chevron-back" size={26} color="#fff" />
+              <Text style={styles.pdfViewerBackLabel}>Retour</Text>
+            </Pressable>
+            <Text style={styles.pdfViewerTitle}>Rapport d&apos;analyse</Text>
+          </View>
+          {pdfViewerHtml && (
+            <WebView
+              source={{ html: pdfViewerHtml, baseUrl: PDFJS_CDN }}
+              originWhitelist={['*']}
+              javaScriptEnabled
+              style={styles.pdfViewerWeb}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={styles.pdfViewerLoading}>
+                  <ActivityIndicator size="large" color="#fff" />
+                </View>
+              )}
+            />
+          )}
+        </View>
+      </Modal>
+
       {/* ── Message géolocalisation ──────────────────────────────────── */}
       <Animated.View
         style={[styles.geoMsg, { opacity: geoMsgOpacity }]}
@@ -2060,6 +2430,51 @@ export default function HomeScreen() {
           {conduiteMode ? 'Mode conduite GPS activé' : 'Géolocalisation activée'}
         </Text>
       </Animated.View>
+
+      {/* ── Erreur : zones d'une autre parcelle reçues ───────────────── */}
+      {zonesIncoherentes && (
+        <View style={styles.dataErrMsgWrap}>
+          <View style={styles.dataErrMsg}>
+            <Ionicons name="alert-circle" size={18} color="#fff" />
+            <Text style={styles.dataErrMsgText}>{zonesIncoherentes}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Avertissement : aucune parcelle sélectionnée ─────────────── */}
+      {warnVisible && (
+        <Animated.View style={[styles.warnMsgWrap, { opacity: warnOpacity }]}>
+          <Pressable style={styles.warnMsg} onPress={handleWarnPress}>
+            <Ionicons name="warning" size={16} color="#fff" />
+            <Text style={styles.warnMsgText}>
+              Aucune parcelle sélectionnée — appuyez pour en choisir une
+            </Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* ── Confirmation : enregistrement réussi ─────────────────────── */}
+      {successMsg && (
+        <Animated.View
+          style={[styles.successMsgWrap, { opacity: successOpacity }]}
+          pointerEvents="none">
+          <View style={styles.successMsg}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.successMsgText}>{successMsg}</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {errorMsg && (
+        <Animated.View
+          style={[styles.successMsgWrap, { opacity: errorOpacity }]}
+          pointerEvents="none">
+          <View style={styles.errorMsg}>
+            <Ionicons name="alert-circle" size={18} color="#fff" />
+            <Text style={styles.successMsgText}>{errorMsg}</Text>
+          </View>
+        </Animated.View>
+      )}
 
 
       {/* ── Message mode édition zone ────────────────────────────────── */}
@@ -2074,16 +2489,18 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* ── Mini légende zones ────────────────────────────────────────── */}
-      <MiniLegend
-        zones={zones}
-        selectedElement={selectedElement}
-        stats={parcelleStats}
-        expanded={legendExpanded}
-        onToggle={() => setLegendExpanded(v => !v)}
-        cultureName={selectedElement === 'S' ? (semisCultureDefinie?.nom ?? null) : null}
-        cultureId={selectedElement === 'S' ? (semisCultureDefinie?.id ?? null) : null}
-      />
+      {/* ── Mini légende zones (masquée en mode Analyse) ──────────────── */}
+      {!showPrelevements && (
+        <MiniLegend
+          zones={zones}
+          selectedElement={selectedElement}
+          stats={parcelleStats}
+          expanded={legendExpanded}
+          onToggle={() => setLegendExpanded(v => !v)}
+          cultureName={selectedElement === 'S' ? (semisCultureDefinie?.nom ?? null) : null}
+          cultureId={selectedElement === 'S' ? (semisCultureDefinie?.id ?? null) : null}
+        />
+      )}
 
       {/* ── Bulle dose zone courante (même position que SearchBar) ─────── */}
       <ZoneDoseBubble info={zoneBubbleInfo} topOffset={searchTop} />
@@ -2192,34 +2609,40 @@ export default function HomeScreen() {
             const fert = selectedElement ?? 'P';
             const shouldPatch = data.perso_rendement || data.perso_dose || data.id_type_sol != null;
             if (shouldPatch) {
-              const res = await patchZoneEngrais(data.num_zone, fert, {
-                perso_rendement: data.perso_rendement,
-                rendement: data.rendement > 0 ? data.rendement : null,
-                perso_dose: data.perso_dose,
-                dose: data.dose >= 0 ? data.dose : null,
-                ...(data.id_type_sol != null ? { id_type_sol: data.id_type_sol } : {}),
-              });
-              setZones(prev => prev.map(z => {
-                if (z.num_zone !== data.num_zone) return z;
-                return {
-                  ...z,
-                  style: z.style && res.couleur
-                    ? { ...z.style, fillColor: res.couleur }
-                    : z.style,
-                  properties: z.properties
-                    ? {
-                        ...z.properties,
-                        ...(res.id_type_sol != null ? { id_type_sol: res.id_type_sol } : {}),
-                        ...(res.dose != null ? { dose: res.dose } : {}),
-                      }
-                    : z.properties,
-                };
-              }));
-              if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-              setFlashZoneNum(data.num_zone);
-              flashTimerRef.current = setTimeout(() => setFlashZoneNum(null), 700);
-              setLegendExpanded(true);
-              Alert.alert('Succès', 'Zone enregistrée ✅');
+              try {
+                const res = await patchZoneEngrais(data.num_zone, fert, {
+                  perso_rendement: data.perso_rendement,
+                  rendement: data.rendement > 0 ? data.rendement : null,
+                  perso_dose: data.perso_dose,
+                  dose: data.dose >= 0 ? data.dose : null,
+                  ...(data.id_type_sol != null ? { id_type_sol: data.id_type_sol } : {}),
+                });
+                setZones(prev => prev.map(z => {
+                  if (z.num_zone !== data.num_zone) return z;
+                  return {
+                    ...z,
+                    style: z.style && res.couleur
+                      ? { ...z.style, fillColor: res.couleur }
+                      : z.style,
+                    properties: z.properties
+                      ? {
+                          ...z.properties,
+                          ...(res.id_type_sol != null ? { id_type_sol: res.id_type_sol } : {}),
+                          ...(res.dose != null ? { dose: res.dose } : {}),
+                        }
+                      : z.properties,
+                  };
+                }));
+                if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+                setFlashZoneNum(data.num_zone);
+                flashTimerRef.current = setTimeout(() => setFlashZoneNum(null), 700);
+                setLegendExpanded(true);
+                showSuccess('Zone enregistrée');
+              } catch (e) {
+                // Message clair pour l'agriculteur ; on garde le formulaire ouvert pour réessayer.
+                showError(friendlyError(e, "Impossible d'enregistrer la zone. Réessayez dans un instant."));
+                return;
+              }
             }
             setZoneFormVisible(false);
             setSelectedZoneIdx(null);
@@ -2263,7 +2686,7 @@ export default function HomeScreen() {
               })
               .catch(() => {})
               .finally(() => setLoadingZones(false));
-            Alert.alert('Succès', 'Zone enregistrée ✅');
+            showSuccess('Zone enregistrée');
           }}
         />
       )}
@@ -2293,7 +2716,7 @@ export default function HomeScreen() {
           onSave={() => {
             setZoneSemisFormVisible(false);
             setSelectedZoneIdx(null);
-            Alert.alert('Succès', 'Zone semis enregistrée ✅');
+            showSuccess('Zone semis enregistrée');
             // Recharger les zones semis
             const dbId = parcelleDbId ?? Number(
               features[selectedId]?.properties?.id_parcel ??
@@ -2306,11 +2729,6 @@ export default function HomeScreen() {
                 setZones(data.zones);
                 setParcelleStats(data.stats);
                 setPrelevements(data['prélevements'] ?? []);
-                // Activer étiquettes doses + déplier légende
-                const hasDoses = data.zones.some(
-                  z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
-                );
-                if (hasDoses) setShowDoseLabels(true);
                 setLegendExpanded(true);
               })
               .finally(() => setLoadingZones(false));
@@ -2420,15 +2838,11 @@ export default function HomeScreen() {
                   setParcelleStats(detail.stats);
                   setPrelevements(detail['prélevements'] ?? []);
                   setLegendExpanded(true);
-                  const hasDoses = detail.zones.some(
-                    z => z.properties?.dose != null && (z.properties.dose as number) >= 0,
-                  );
-                  if (hasDoses) setShowDoseLabels(true);
                 })
                 .catch(() => {});
-              Alert.alert('Succès', 'Formulaire enregistré ✅');
+              showSuccess('Formulaire enregistré');
             } catch (err: unknown) {
-              Alert.alert('Erreur', err instanceof Error ? err.message : 'Impossible d\'enregistrer le formulaire');
+              showError(friendlyError(err, "Impossible d'enregistrer la fiche. Réessayez dans un instant."));
             }
           }}
         />
@@ -2436,7 +2850,7 @@ export default function HomeScreen() {
 
       {/* ── Écran de connexion ────────────────────────────────────────── */}
       {sessionChecked && !isAuthenticated && (
-        <LoginModal onSuccess={() => setIsAuthenticated(true)} />
+        <LoginModal onSuccess={() => { setIsAuthenticated(true); hydrateAccountContext(); }} />
       )}
       </View>{/* fin overlays UI */}
 
@@ -2464,6 +2878,48 @@ export default function HomeScreen() {
       />
 
       {/* ── Modal changement de projet ─────────────────────────────────── */}
+      {/* ── Menu Compte ───────────────────────────────────────────────── */}
+      <Modal visible={accountMenuVisible} transparent animationType="fade" onRequestClose={() => setAccountMenuVisible(false)}>
+        <Pressable style={styles.accountMenuBg} onPress={() => setAccountMenuVisible(false)}>
+          <View
+            style={[styles.accountMenuCard, { top: iconBarTop, right: 74 }]}
+            onStartShouldSetResponder={() => true}>
+            <Text style={styles.accountMenuHeader}>COMPTE</Text>
+            {accountInfo && (
+              <View style={styles.accountUserRow}>
+                <View style={styles.accountAvatar}>
+                  <Ionicons name="person" size={16} color="#2E7D32" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accountUserName} numberOfLines={1}>{accountDisplayName}</Text>
+                  {currentRepoLabel ? (
+                    <Text style={styles.accountUserSub} numberOfLines={1}>{currentRepoLabel}</Text>
+                  ) : null}
+                </View>
+              </View>
+            )}
+            {switchRepos.length > 1 && (
+              <Pressable
+                style={({ pressed }) => [styles.accountAction, pressed && { opacity: 0.6 }]}
+                onPress={() => { setAccountMenuVisible(false); void handleSwitchProject(); }}>
+                <Ionicons name="swap-horizontal-outline" size={18} color="#546E7A" />
+                <Text style={styles.accountActionText}>Changer de projet</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.accountAction,
+                switchRepos.length > 1 && styles.accountActionDivider,
+                pressed && { opacity: 0.6 },
+              ]}
+              onPress={() => { setAccountMenuVisible(false); handleLogout(); }}>
+              <Ionicons name="log-out-outline" size={18} color="#c0392b" />
+              <Text style={[styles.accountActionText, { color: '#c0392b' }]}>Se déconnecter</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       <Modal visible={switchProjectVisible} transparent animationType="fade" onRequestClose={() => setSwitchProjectVisible(false)}>
         <Pressable style={styles.switchModalBg} onPress={() => setSwitchProjectVisible(false)}>
           <View style={styles.switchModalCard} onStartShouldSetResponder={() => true}>
@@ -2748,12 +3204,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   panelTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#2B5F6E',
     letterSpacing: 0.2,
   },
   panelDivider: {
@@ -2762,28 +3218,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
   },
   panelScrollContent: {
-    paddingTop: 2,
-    paddingBottom: 12,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
 
-  // ── Accordéon ──────────────────────────────────────────────────────────────
-  accHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // ── Sections (plates) ───────────────────────────────────────────────────────
+  section: {
     paddingHorizontal: 18,
-    paddingVertical: 16,
-    minHeight: 48,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
-  accTitle: {
-    fontSize: 12,
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#D32F2F',
-    letterSpacing: 1.4,
+    color: '#1B5E20',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
-  accBody: {
-    paddingHorizontal: 18,
-    paddingBottom: 10,
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#ECECEC',
+    marginHorizontal: 18,
+    marginVertical: 2,
   },
 
   // ── Pills ──────────────────────────────────────────────────────────────────
@@ -2794,17 +3250,20 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   pill: {
-    backgroundColor: '#EEEEEE',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    backgroundColor: '#F2F4F5',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#DCE3E5',
   },
   pillActive: {
-    backgroundColor: '#FF6B00',
+    backgroundColor: '#2B5F6E',
+    borderColor: '#2B5F6E',
   },
   pillText: {
-    fontSize: 11,
-    color: '#555',
+    fontSize: 12,
+    color: '#4A5A5F',
     fontWeight: '500',
   },
   pillTextActive: {
@@ -2894,6 +3353,155 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+  },
+
+  // ── Menu Compte ────────────────────────────────────────────────────────────
+  accountMenuBg: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  accountMenuCard: {
+    position: 'absolute',
+    width: 210,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 4,
+    ...SHADOW,
+  },
+  accountMenuHeader: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: '#90A0AB',
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 7,
+  },
+  accountUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingBottom: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EEEEEE',
+  },
+  accountAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(46,125,50,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountUserName: { fontSize: 13, fontWeight: '700', color: '#263238' },
+  accountUserSub: { fontSize: 11, color: '#90A0AB' },
+  accountAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  accountActionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EEEEEE',
+  },
+  accountActionText: { fontSize: 13, fontWeight: '600', color: '#37474F' },
+
+  // ── Bandeau analyses (légende couleurs par zone + PDF) ──────────────────────
+  analyseBanner: {
+    position: 'absolute',
+    bottom: 56,
+    left: 6,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    minWidth: 170,
+    maxWidth: 240,
+    zIndex: 90,
+    ...SHADOW,
+  },
+  analyseBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 6,
+  },
+  analyseBannerTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#37474F',
+    letterSpacing: 0.3,
+    marginBottom: 6,
+  },
+  analyseDownloadBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: 'rgba(46,125,50,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  analyseLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  analyseSwatch: {
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  analyseLegendText: {
+    fontSize: 11,
+    color: '#546E7A',
+    fontWeight: '600',
+    flex: 1,
+  },
+
+  // ── Viewer PDF plein écran (iOS) ──────────────────────────────────────────
+  pdfViewerContainer: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+  },
+  pdfViewerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    backgroundColor: '#1A1A1A',
+  },
+  pdfViewerBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pdfViewerBackLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 2,
+  },
+  pdfViewerTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 12,
+  },
+  pdfViewerWeb: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+  },
+  pdfViewerLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A1A',
   },
   switchModalCard: {
     backgroundColor: '#fff',
@@ -2986,6 +3594,86 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '500',
+  },
+  dataErrMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '90%',
+    zIndex: 97,
+  },
+  dataErrMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#C62828',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    ...SHADOW,
+  },
+  dataErrMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  warnMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '88%',
+    zIndex: 96,
+  },
+  warnMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F57C00',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    ...SHADOW,
+  },
+  warnMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  successMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '88%',
+    zIndex: 96,
+  },
+  successMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2E7D32',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    ...SHADOW,
+  },
+  errorMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#C62828',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    ...SHADOW,
+  },
+  successMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
   },
   editZoneHint: {
     position: 'absolute',
