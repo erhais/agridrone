@@ -21,6 +21,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { ApiError } from '../services/api';
 import { apiService } from '../services/api';
 import { type EngraisZoneDetail, type TypeSolItem } from '../services/agridroneService';
+import { champNumeriqueOuVide } from '../utils/formulaireUtils';
 
 const { height: SCREEN_H } = require('react-native').Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.9;
@@ -31,6 +32,9 @@ const ACCENT = '#1B5E20';
 const ELEMENT_LABELS: Record<string, string> = {
   P: 'Phosphore', K: 'Potassium', MG: 'Magnésie',
 };
+
+// -1 = sentinelle « non renseigné » côté base → champ vide (voir formulaireUtils).
+const numOrEmpty = champNumeriqueOuVide;
 
 // ── Checkbox ─────────────────────────────────────────────────────────────────
 function Checkbox({ value, onValueChange, label }: {
@@ -133,15 +137,14 @@ export default function FormulaireZoneEngrais({
 
     const p = zone.properties;
     const d = initialDetailRef.current;
-    setTeneur(d?.teneur != null ? String(d.teneur) : (p.teneur != null ? String(p.teneur) : ''));
-    setPh(d?.ph != null ? String(d.ph) : (p.ph != null ? String(p.ph) : ''));
-    setDose(d?.dose != null ? String(d.dose) : (p.dose != null ? String(p.dose) : ''));
+    setTeneur(numOrEmpty(d?.teneur ?? p.teneur));
+    setPh(numOrEmpty(d?.ph ?? p.ph));
+    setDose(numOrEmpty(d?.dose ?? p.dose));
     const isPersoRend = d?.perso_rendement === 1;
     setPersoRendement(isPersoRend);
     const rend = isPersoRend && d?.rendement != null
-      ? String(d.rendement)
-      : rendementGlobalRef.current != null ? String(rendementGlobalRef.current)
-      : p.rendement != null ? String(p.rendement) : '';
+      ? numOrEmpty(d.rendement)
+      : numOrEmpty(rendementGlobalRef.current ?? p.rendement);
     setRendement(rend);
     setPersoDose(false);
     const idTypeSol = (p.id_type_sol as number | null)
@@ -336,7 +339,7 @@ export default function FormulaireZoneEngrais({
                   }
                   setPersoRendement(v);
                   if (!v) {
-                    setRendement(rendementGlobal != null ? String(rendementGlobal) : '');
+                    setRendement(numOrEmpty(rendementGlobal));
                   }
                 }}
                 label="Personnaliser le rendement"
@@ -347,11 +350,11 @@ export default function FormulaireZoneEngrais({
                 </Text>
                 <TextInput
                   style={[styles.input, !persoRendement && styles.inputReadonly]}
-                  value={persoRendement ? rendement : (rendementGlobal != null ? String(rendementGlobal) : '')}
+                  value={persoRendement ? rendement : numOrEmpty(rendementGlobal)}
                   onChangeText={persoRendement ? setRendement : undefined}
                   editable={persoRendement}
                   keyboardType="numeric"
-                  placeholder="0"
+                  placeholder="Préciser le rendement"
                   placeholderTextColor="#BDBDBD"
                 />
               </View>
@@ -379,7 +382,7 @@ export default function FormulaireZoneEngrais({
                   onChangeText={persoDose ? setDose : undefined}
                   editable={persoDose}
                   keyboardType="decimal-pad"
-                  placeholder="0"
+                  placeholder="Préciser la dose"
                   placeholderTextColor="#BDBDBD"
                 />
               </View>

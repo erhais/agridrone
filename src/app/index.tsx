@@ -74,6 +74,7 @@ import {
   bearingDeg, bearingToCompass, distanceMeters,
   nearestOnBoundary, nudgeLatLng, pointInZoneGeometry, type LatLng,
 } from '../utils/geoUtils';
+import { verifierCoherenceZones } from '../utils/zoneUtils';
 import MapView, { Circle, Marker, Polygon, UrlTile, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -993,6 +994,9 @@ export default function HomeScreen() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [zones, setZones] = useState<ZoneDetail[]>([]);
+  // Renseigné quand l'API renvoie les zones d'une autre parcelle : les doses
+  // sont alors masquées plutôt qu'affichées à tort (risque d'épandage erroné).
+  const [zonesIncoherentes, setZonesIncoherentes] = useState<string | null>(null);
   const [parcelleStats, setParcelleStats] = useState<ParcelleStats | null>(null);
   const [parcelleDbId, setParcelleDbId] = useState<number | null>(null);
   const [isEditeur, setIsEditeur] = useState(false);
@@ -1171,6 +1175,7 @@ export default function HomeScreen() {
     if (selectedId === null || selectedElement === null || features.length === 0) {
       setZones([]);
       setParcelleStats(null);
+      setZonesIncoherentes(null);
       return;
     }
     const feature = features[selectedId];
@@ -1181,11 +1186,13 @@ export default function HomeScreen() {
     if (idParcel == null) {
       setZones([]);
       setParcelleStats(null);
+      setZonesIncoherentes(null);
       return;
     }
     let cancelled = false;
     setZones([]);
     setParcelleStats(null);
+    setZonesIncoherentes(null);
     setLoadingZones(true);
     // Pour semis : récupérer aussi le nom de la culture
     if (selectedElement === 'S') {
@@ -1203,20 +1210,34 @@ export default function HomeScreen() {
 
     getParcelleDetails(idParcel, selectedElement)
       .then(data => {
-        if (!cancelled) {
-          setZones(data.zones);
-          setParcelleStats(data.stats);
-          setParcelleDbId(data.parcelle.id);
-          setPrelevements(data['prélevements'] ?? []);
-          const editeur = data.is_editeur ?? data.parcelle.is_editeur ?? false;
-          const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
-          setIsEditeur(editeur);
-          setCarteValue(carte);
-          if (editeur) {
-            getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
-          } else {
-            setTypeSols([]);
-          }
+        if (cancelled) return;
+        // Garde-fou : les zones doivent être contenues dans la parcelle
+        // sélectionnée. Ne jamais afficher les doses d'une autre parcelle.
+        const coherence = verifierCoherenceZones(data.zones, feature.geometry);
+        if (!coherence.coherent) {
+          setZones([]);
+          setParcelleStats(null);
+          setPrelevements([]);
+          setZonesIncoherentes(
+            `Données incohérentes pour « ${feature.properties?.nom_parcel ?? 'cette parcelle'} » : ` +
+            `${coherence.nbHorsParcelle} zone${coherence.nbHorsParcelle > 1 ? 's' : ''} ` +
+            `sur ${data.zones.length} ${coherence.nbHorsParcelle > 1 ? 'sont situées' : 'est située'} ` +
+            `hors de la parcelle. Les doses ne sont pas affichées. Contactez le support.`,
+          );
+          return;
+        }
+        setZones(data.zones);
+        setParcelleStats(data.stats);
+        setParcelleDbId(data.parcelle.id);
+        setPrelevements(data['prélevements'] ?? []);
+        const editeur = data.is_editeur ?? data.parcelle.is_editeur ?? false;
+        const carte = (data.zones[0]?.properties?.['carte'] as number | undefined) ?? 0;
+        setIsEditeur(editeur);
+        setCarteValue(carte);
+        if (editeur) {
+          getTypeSol(carte).then(setTypeSols).catch(() => setTypeSols([]));
+        } else {
+          setTypeSols([]);
         }
       })
       .catch((err: unknown) => {
@@ -1237,6 +1258,7 @@ export default function HomeScreen() {
     setSelectedElement(prev => prev ?? 'P');
     setCollapseSignal(s => s + 1);
     setZones([]);
+    setZonesIncoherentes(null);
     setPrelevements([]);
     setShowPrelevements(false);
     setEditZoneMode(false);
@@ -1259,6 +1281,7 @@ export default function HomeScreen() {
     setQuery('');
     setDropdownOpen(false);
     setZones([]);
+    setZonesIncoherentes(null);
     setParcelleStats(null);
     setParcelleDbId(null);
     setPrelevements([]);
@@ -1775,6 +1798,7 @@ export default function HomeScreen() {
     // Réinitialiser la carte et recharger les parcelles du nouveau projet
     setFeatures([]);
     setZones([]);
+    setZonesIncoherentes(null);
     setSelectedId(null);
     setSelectedElement(null);
     setParcelleStats(null);
@@ -2406,6 +2430,16 @@ export default function HomeScreen() {
           {conduiteMode ? 'Mode conduite GPS activé' : 'Géolocalisation activée'}
         </Text>
       </Animated.View>
+
+      {/* ── Erreur : zones d'une autre parcelle reçues ───────────────── */}
+      {zonesIncoherentes && (
+        <View style={styles.dataErrMsgWrap}>
+          <View style={styles.dataErrMsg}>
+            <Ionicons name="alert-circle" size={18} color="#fff" />
+            <Text style={styles.dataErrMsgText}>{zonesIncoherentes}</Text>
+          </View>
+        </View>
+      )}
 
       {/* ── Avertissement : aucune parcelle sélectionnée ─────────────── */}
       {warnVisible && (
@@ -3560,6 +3594,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '500',
+  },
+  dataErrMsgWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: 100,
+    maxWidth: '90%',
+    zIndex: 97,
+  },
+  dataErrMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#C62828',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    ...SHADOW,
+  },
+  dataErrMsgText: {
+    flexShrink: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#fff',
+    fontWeight: '600',
   },
   warnMsgWrap: {
     position: 'absolute',

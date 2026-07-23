@@ -1,6 +1,7 @@
 import { Picker } from '@react-native-picker/picker';
 import { useEffect, useRef, useState } from 'react';
 import { getCultures, getFrequences, getPailleOptions, type ReferentielItem } from '../services/agridroneService';
+import { champNumeriqueOuVide, pickerIdOuZero } from '../utils/formulaireUtils';
 import {
   ActivityIndicator,
   Alert,
@@ -159,15 +160,16 @@ export default function FormulaireEngrais({
   useEffect(() => {
     if (visible) {
       if (initialData) {
+        // -1 = sentinelle « non renseigné » côté base (voir formulaireUtils).
         setAnneeRecolte(initialData.annee_recolte);
-        setIdCulture(initialData.id_culture);
+        setIdCulture(pickerIdOuZero(initialData.id_culture));
         setDoubleCulture(initialData.double_culture);
         if (initialData.id_culture2) setIdCulture2(initialData.id_culture2);
         if (initialData.obj_rendement2) setObjRendement2(initialData.obj_rendement2);
-        setIdFrequence(initialData.id_engrais_frequence);
-        setObjRendement(initialData.obj_rendement);
+        setIdFrequence(pickerIdOuZero(initialData.id_engrais_frequence));
+        setObjRendement(champNumeriqueOuVide(initialData.obj_rendement));
         setRendementSpecifique(initialData.rendement_specifique_zone);
-        setTeneurEngrais(initialData.teneur_engrais);
+        setTeneurEngrais(champNumeriqueOuVide(initialData.teneur_engrais));
         setDosageManuel(initialData.dosage_manuel_zone);
         setQteApportee(initialData.qte_deja_apportee);
         setIdPaille(initialData.paille);
@@ -335,6 +337,7 @@ export default function FormulaireEngrais({
                   onValueChange={v => { setIdCulture(Number(v)); setErrors(p => ({ ...p, idCulture: '' })); }}
                   style={styles.picker}
                   itemStyle={styles.pickerItem}>
+                  <Picker.Item key={0} label="— Sélectionner —" value={0} color="#B0B0B0" />
                   {cultures.map(c => <Picker.Item key={c.id} label={c.nom} value={c.id} />)}
                 </Picker>
               </View>
@@ -381,6 +384,7 @@ export default function FormulaireEngrais({
                   onValueChange={v => { setIdFrequence(Number(v)); setErrors(p => ({ ...p, idFrequence: '' })); }}
                   style={styles.picker}
                   itemStyle={styles.pickerItem}>
+                  <Picker.Item key={0} label="— Sélectionner —" value={0} color="#B0B0B0" />
                   {frequences.map(f => <Picker.Item key={f.id} label={f.nom} value={f.id} />)}
                 </Picker>
               </View>
@@ -397,6 +401,8 @@ export default function FormulaireEngrais({
                 value={objRendement}
                 onChangeText={v => { setObjRendement(v); setErrors(p => ({ ...p, objRendement: '' })); }}
                 keyboardType="numeric"
+                placeholder="Préciser le rendement"
+                placeholderTextColor="#B0B0B0"
               />
               <Checkbox value={rendementSpecifique} onValueChange={setRendementSpecifique} label="Rendement spécifique sur zone" />
               {!!errors.objRendement && <Text style={styles.errorText}>{errors.objRendement}</Text>}
@@ -410,6 +416,8 @@ export default function FormulaireEngrais({
                 value={teneurEngrais}
                 onChangeText={v => { setTeneurEngrais(v); setErrors(p => ({ ...p, teneurEngrais: '' })); }}
                 keyboardType="numeric"
+                placeholder="Préciser la teneur"
+                placeholderTextColor="#B0B0B0"
               />
               <Checkbox value={dosageManuel} onValueChange={setDosageManuel} label="Dosage manuel sur zone" />
               {!!errors.teneurEngrais && <Text style={styles.errorText}>{errors.teneurEngrais}</Text>}
