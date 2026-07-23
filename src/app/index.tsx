@@ -1996,30 +1996,6 @@ export default function HomeScreen() {
     }
   };
 
-  if (Platform.OS === 'web') {
-    return (
-      <View style={styles.webFallback}>
-        <Text style={styles.webText}>
-          La carte est disponible sur iOS et Android
-        </Text>
-      </View>
-    );
-  }
-
-  const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile || loadingFormulaire;
-  const searchTop = insets.top + 10;
-  const iconBarTop = searchTop + 54;
-
-  // Libellé lisible du dépôt courant pour l'en-tête du menu Compte
-  const currentRepoLabel = accountInfo
-    ? (switchRepos.find(r => r.cle === accountInfo.repository)?.label ?? null)
-    : null;
-
-  // Nom affiché dans le menu Compte : « Prénom Nom » si dispo, sinon l'identifiant
-  const accountDisplayName = accountInfo
-    ? ([accountInfo.prenom, accountInfo.nom].filter(Boolean).join(' ').trim() || accountInfo.login)
-    : '';
-
   // Couleur de marqueur par zone de prélèvement : chaque num_zone distinct reçoit
   // une couleur de la palette, partagée par tous les points de la zone.
   const prelevementZoneColors = useMemo(() => {
@@ -2047,6 +2023,30 @@ export default function HomeScreen() {
         color: prelevementZoneColors.get(numZone) ?? PRELEV_DEFAULT_COLOR,
       }));
   }, [prelevements, prelevementZoneColors]);
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.webFallback}>
+        <Text style={styles.webText}>
+          La carte est disponible sur iOS et Android
+        </Text>
+      </View>
+    );
+  }
+
+  const loading = loadingHello || loadingParcelles || loadingZones || loadingShapefile || loadingFormulaire;
+  const searchTop = insets.top + 10;
+  const iconBarTop = searchTop + 54;
+
+  // Libellé lisible du dépôt courant pour l'en-tête du menu Compte
+  const currentRepoLabel = accountInfo
+    ? (switchRepos.find(r => r.cle === accountInfo.repository)?.label ?? null)
+    : null;
+
+  // Nom affiché dans le menu Compte : « Prénom Nom » si dispo, sinon l'identifiant
+  const accountDisplayName = accountInfo
+    ? ([accountInfo.prenom, accountInfo.nom].filter(Boolean).join(' ').trim() || accountInfo.login)
+    : '';
 
   return (
     <View style={styles.container}>
