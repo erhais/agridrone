@@ -3,7 +3,7 @@
 ## 1.2.0 — 2026-07-23
 
 Builds : iOS `buildNumber` 7 · Android `versionCode` 8
-Déploiement : App Store (revue) · Play Store production (rollout progressif 20 %)
+Déploiement : App Store (revue) · Play Store production — 100 % (1ʳᵉ release ; le rollout progressif 20 % n'est possible qu'à partir de la 2ᵉ mise à jour)
 
 ### Nouveautés (store — « What's new » / « Nouveautés », FR, ≤ 500 car.)
 
