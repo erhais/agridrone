@@ -85,7 +85,7 @@ describe('FormulaireZoneEngrais — affichage initial', () => {
 describe('FormulaireZoneEngrais — personnalisation du rendement', () => {
   it('le champ rendement est non éditable par défaut et affiche le rendement global', async () => {
     await render(<FormulaireZoneEngrais {...baseProps()} />);
-    const input = screen.getByPlaceholderText('Préciser le rendement');
+    const input = screen.getByDisplayValue('75');
     expect(input.props.editable).toBe(false);
     expect(input.props.value).toBe('75'); // rendementGlobal
   });
@@ -93,14 +93,14 @@ describe('FormulaireZoneEngrais — personnalisation du rendement', () => {
   it('cocher « Personnaliser le rendement » rend le champ éditable', async () => {
     await render(<FormulaireZoneEngrais {...baseProps()} />);
     await fireEvent.press(screen.getByText('Personnaliser le rendement'));
-    expect(screen.getByPlaceholderText('Préciser le rendement').props.editable).toBe(true);
+    expect(screen.getByDisplayValue('75').props.editable).toBe(true);
   });
 
   it('refuse la personnalisation et alerte si allowRendementSpec=false', async () => {
     await render(<FormulaireZoneEngrais {...baseProps({ allowRendementSpec: false })} />);
     await fireEvent.press(screen.getByText('Personnaliser le rendement'));
     expect(Alert.alert).toHaveBeenCalledWith('Non autorisé', expect.any(String));
-    expect(screen.getByPlaceholderText('Préciser le rendement').props.editable).toBe(false);
+    expect(screen.getByDisplayValue('75').props.editable).toBe(false);
   });
 });
 
@@ -109,15 +109,15 @@ describe('FormulaireZoneEngrais — personnalisation de la dose', () => {
     await render(<FormulaireZoneEngrais {...baseProps({ allowDosageManuel: false })} />);
     await fireEvent.press(screen.getByText('Personnaliser la dose'));
     expect(Alert.alert).toHaveBeenCalledWith('Non autorisé', expect.any(String));
-    expect(screen.getByPlaceholderText('Préciser la dose').props.editable).toBe(false);
+    expect(screen.getByDisplayValue('120').props.editable).toBe(false);
   });
 
   it('permet la saisie d’une dose après activation', async () => {
     await render(<FormulaireZoneEngrais {...baseProps()} />);
     await fireEvent.press(screen.getByText('Personnaliser la dose'));
-    await fireEvent.changeText(screen.getByPlaceholderText('Préciser la dose'), '135');
+    await fireEvent.changeText(screen.getByDisplayValue('120'), '135');
     // Re-query : la référence d'élément est un instantané figé au moment de la requête.
-    expect(screen.getByPlaceholderText('Préciser la dose').props.value).toBe('135');
+    expect(screen.getByDisplayValue('135')).toBeOnTheScreen();
   });
 });
 
@@ -147,7 +147,7 @@ describe('FormulaireZoneEngrais — enregistrement', () => {
     await render(<FormulaireZoneEngrais {...baseProps({ onSave })} />);
 
     await fireEvent.press(screen.getByText('Personnaliser la dose'));
-    await fireEvent.changeText(screen.getByPlaceholderText('Préciser la dose'), '135');
+    await fireEvent.changeText(screen.getByDisplayValue('120'), '135');
     await fireEvent.press(screen.getByText('Enregistrer'));
 
     await waitFor(() => expect(onSave).toHaveBeenCalled());
